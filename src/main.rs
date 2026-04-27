@@ -33,6 +33,7 @@ mod governance;
 mod masternode;
 mod portfolio;
 mod server_mode;
+mod web_server;
 
 use tokio::time::{sleep, Duration};
 use node::{NodeState, NodeMessage, run_node, send_to_node};
@@ -181,6 +182,9 @@ async fn main() {
     node2.add_peer("127.0.0.1:8003");
     node3.add_peer("127.0.0.1:8001");
     node3.add_peer("127.0.0.1:8002");
+    node1.add_peer("shuttle.proxy.rlwy.net:48191");
+    node2.add_peer("shuttle.proxy.rlwy.net:48191");
+    node3.add_peer("shuttle.proxy.rlwy.net:48191");
 
     let n1 = node1.clone();
     let n2 = node2.clone();
