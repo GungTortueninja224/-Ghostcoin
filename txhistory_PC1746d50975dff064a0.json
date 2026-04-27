@@ -1,0 +1,122 @@
+[
+  {
+    "tx_id": "coinbase_c17392c896d3df89",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:35 UTC",
+    "block_height": 26,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_7b207090bfca86b6",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:36 UTC",
+    "block_height": 27,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_88540ad89a25c849",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:37 UTC",
+    "block_height": 28,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_7b7d75cde4cad98f",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:38 UTC",
+    "block_height": 29,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_cf0d7becf6fb3245",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:39 UTC",
+    "block_height": 30,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_be09bd2e8ff0fd9e",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:40 UTC",
+    "block_height": 31,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_685fcf6467816ecc",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:42 UTC",
+    "block_height": 32,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_bc51a7d8fb9ad649",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-27 00:14:43 UTC",
+    "block_height": 33,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  }
+]

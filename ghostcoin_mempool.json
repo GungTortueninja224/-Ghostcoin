@@ -1,0 +1,50 @@
+[
+  {
+    "tx_id": "tx_810b6523656aa190",
+    "sender": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "receiver": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "amount": 120,
+    "fee": 5,
+    "fee_rate": 0,
+    "size_bytes": 250,
+    "timestamp": 1777240562,
+    "claimed": true,
+    "relay_count": 0
+  },
+  {
+    "tx_id": "tx_bdeb3a68142db5d2",
+    "sender": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "receiver": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "amount": 10,
+    "fee": 5,
+    "fee_rate": 0,
+    "size_bytes": 250,
+    "timestamp": 1777240743,
+    "claimed": true,
+    "relay_count": 0
+  },
+  {
+    "tx_id": "tx_32648be8dadf40d5",
+    "sender": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "receiver": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "amount": 100,
+    "fee": 5,
+    "fee_rate": 0,
+    "size_bytes": 250,
+    "timestamp": 1777240896,
+    "claimed": true,
+    "relay_count": 0
+  },
+  {
+    "tx_id": "tx_1c04e442097693fc",
+    "sender": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "receiver": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "amount": 100,
+    "fee": 2,
+    "fee_rate": 0,
+    "size_bytes": 250,
+    "timestamp": 1777241214,
+    "claimed": true,
+    "relay_count": 0
+  }
+]

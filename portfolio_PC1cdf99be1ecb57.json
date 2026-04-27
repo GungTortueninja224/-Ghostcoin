@@ -1,0 +1,35 @@
+{
+  "address": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+  "balances": [
+    {
+      "symbol": "GHST",
+      "name": "GhostCoin",
+      "amount": 168.0,
+      "icon": "👻"
+    },
+    {
+      "symbol": "BTC",
+      "name": "Bitcoin",
+      "amount": 0.0,
+      "icon": "₿"
+    },
+    {
+      "symbol": "ETH",
+      "name": "Ethereum",
+      "amount": 0.0,
+      "icon": "Ξ"
+    },
+    {
+      "symbol": "USDT",
+      "name": "Tether",
+      "amount": 0.0997,
+      "icon": "💵"
+    },
+    {
+      "symbol": "BNB",
+      "name": "BNB",
+      "amount": 0.0,
+      "icon": "🔶"
+    }
+  ]
+}

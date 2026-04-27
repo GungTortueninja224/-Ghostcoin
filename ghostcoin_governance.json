@@ -1,0 +1,46 @@
+[
+  {
+    "id": 1,
+    "title": "Augmenter la taille des blocs",
+    "description": "Passer de 1MB à 2MB pour plus de TX par bloc",
+    "proposer": "genesis",
+    "created_at": 1777241120,
+    "expires_at": 1777845920,
+    "votes": [],
+    "status": "Active",
+    "category": "Technique"
+  },
+  {
+    "id": 2,
+    "title": "Réduire la difficulté de minage",
+    "description": "Difficulté 4 → 3 pour accélérer les blocs",
+    "proposer": "genesis",
+    "created_at": 1777241120,
+    "expires_at": 1777845920,
+    "votes": [],
+    "status": "Active",
+    "category": "Consensus"
+  },
+  {
+    "id": 3,
+    "title": "Ajouter support Tor obligatoire",
+    "description": "Rendre Tor obligatoire pour tous les noeuds",
+    "proposer": "genesis",
+    "created_at": 1777241120,
+    "expires_at": 1777845920,
+    "votes": [],
+    "status": "Active",
+    "category": "Privacy"
+  },
+  {
+    "id": 4,
+    "title": "",
+    "description": "",
+    "proposer": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "created_at": 1777241129,
+    "expires_at": 1777845929,
+    "votes": [],
+    "status": "Active",
+    "category": ""
+  }
+]

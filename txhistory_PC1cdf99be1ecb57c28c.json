@@ -1,0 +1,99 @@
+[
+  {
+    "tx_id": "tx_810b6523656aa190",
+    "direction": "Received",
+    "amount": 120,
+    "fee": 0,
+    "address": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "timestamp": "2026-04-26 21:57:38 UTC",
+    "block_height": 18,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "tx_bdeb3a68142db5d2",
+    "direction": "Sent",
+    "amount": 10,
+    "fee": 5,
+    "address": "PC1-cdf99be1ecb57c28c9b2e6c6170f4d3bdeedbb7c9df1420d8d55a5ae12e3bba0-CEE2",
+    "timestamp": "2026-04-26 21:59:03 UTC",
+    "block_height": 18,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "tx_32648be8dadf40d5",
+    "direction": "Received",
+    "amount": 100,
+    "fee": 0,
+    "address": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "timestamp": "2026-04-26 22:01:54 UTC",
+    "block_height": 19,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "tx_1c04e442097693fc",
+    "direction": "Sent",
+    "amount": 100,
+    "fee": 2,
+    "address": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "timestamp": "2026-04-26 22:06:54 UTC",
+    "block_height": 19,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "swap_007ddb91bd2716ca",
+    "direction": "Sent",
+    "amount": 10,
+    "fee": 0,
+    "address": "PC1-1e49b3bac18fdd9d92304bd6d5f469c9a59d2d9a69c929b3bbbab44e0c05dd47-02FB",
+    "timestamp": "2026-04-26 22:12:42 UTC",
+    "block_height": null,
+    "status": "Pending",
+    "note": ""
+  },
+  {
+    "tx_id": "swap_5fc6e63206e6122e",
+    "direction": "Sent",
+    "amount": 10,
+    "fee": 0,
+    "address": "swap_to_USDT",
+    "timestamp": "2026-04-26 22:41:00 UTC",
+    "block_height": null,
+    "status": "Pending",
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_72c8aa6210786799",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-26 22:41:34 UTC",
+    "block_height": 25,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  }
+]
