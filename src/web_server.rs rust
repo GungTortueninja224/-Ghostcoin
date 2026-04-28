@@ -1,315 +1,484 @@
-use axum::{
-    routing::get,
-    Router,
-    Json,
-    response::Html,
-};
+use axum::{routing::get, Router, Json, response::Html};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
+use tower_http::services::ServeDir;
 use crate::chain_state::ChainState;
 use crate::mempool::Mempool;
-use crate::sync::SharedChain;
-
-// ==========================================
-// API ENDPOINTS
-// ==========================================
 
 async fn home() -> Html<String> {
     let state   = ChainState::load();
     let mempool = Mempool::load();
+    let pct     = state.minted_supply as f64 / 500_000.0;
 
-    Html(format!(r#"
-<!DOCTYPE html>
-<html>
+    Html(format!(r#"<!DOCTYPE html>
+<html lang="fr">
 <head>
-    <title>👻 GhostCoin Explorer</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            background: #0a0a0a;
-            color: #e0e0e0;
-            font-family: 'Courier New', monospace;
-            min-height: 100vh;
-        }}
-        .header {{
-            background: linear-gradient(135deg, #1a1a2e, #16213e);
-            padding: 30px;
-            text-align: center;
-            border-bottom: 2px solid #7c3aed;
-        }}
-        .logo {{
-            font-size: 3em;
-            margin-bottom: 10px;
-        }}
-        .title {{
-            font-size: 2em;
-            color: #7c3aed;
-            font-weight: bold;
-        }}
-        .subtitle {{
-            color: #888;
-            margin-top: 5px;
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 30px auto;
-            padding: 0 20px;
-        }}
-        .grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        .card {{
-            background: #1a1a2e;
-            border: 1px solid #7c3aed;
-            border-radius: 12px;
-            padding: 25px;
-            text-align: center;
-        }}
-        .card-icon {{ font-size: 2em; margin-bottom: 10px; }}
-        .card-label {{ color: #888; font-size: 0.9em; margin-bottom: 5px; }}
-        .card-value {{ color: #7c3aed; font-size: 1.5em; font-weight: bold; }}
-        .section {{
-            background: #1a1a2e;
-            border: 1px solid #333;
-            border-radius: 12px;
-            padding: 25px;
-            margin-bottom: 20px;
-        }}
-        .section-title {{
-            color: #7c3aed;
-            font-size: 1.2em;
-            font-weight: bold;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #333;
-        }}
-        .stat-row {{
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #222;
-        }}
-        .stat-label {{ color: #888; }}
-        .stat-value {{ color: #e0e0e0; }}
-        .badge {{
-            background: #7c3aed;
-            color: white;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 0.8em;
-        }}
-        .privacy-badge {{
-            display: inline-block;
-            background: #1a1a2e;
-            border: 1px solid #7c3aed;
-            color: #7c3aed;
-            padding: 5px 15px;
-            border-radius: 20px;
-            margin: 5px;
-            font-size: 0.85em;
-        }}
-        .footer {{
-            text-align: center;
-            padding: 30px;
-            color: #444;
-            border-top: 1px solid #222;
-            margin-top: 40px;
-        }}
-        .refresh {{ color: #888; font-size: 0.8em; margin-top: 10px; }}
-    </style>
-    <script>
-        // Auto-refresh toutes les 30 secondes
-        setTimeout(() => location.reload(), 30000);
-    </script>
+<title>GhostCoin (GHST) — Privacy Blockchain Explorer</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="GhostCoin GHST — Privacy Blockchain Explorer. Block height, supply, mempool, tokenomics.">
+<link rel="icon" href="/static/logo.png" type="image/png">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+:root{{
+  --bg:#04040f;
+  --card:#0a0a1f;
+  --card2:#0f0f28;
+  --border:#1e1e4a;
+  --purple:#6c2bd9;
+  --purple2:#8b5cf6;
+  --purple3:#a78bfa;
+  --green:#10b981;
+  --red:#ef4444;
+  --text:#f1f5f9;
+  --muted:#64748b;
+  --gold:#f59e0b;
+}}
+body{{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden}}
+
+/* NAVBAR */
+nav{{
+  position:sticky;top:0;z-index:100;
+  background:rgba(4,4,15,0.92);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:0 32px;height:68px;
+  display:flex;align-items:center;justify-content:space-between;
+}}
+.nav-logo{{display:flex;align-items:center;gap:12px}}
+.nav-logo img{{width:42px;height:48px;object-fit:contain;filter:drop-shadow(0 0 8px rgba(139,92,246,0.6))}}
+.nav-title{{font-size:1.25em;font-weight:800;background:linear-gradient(135deg,#fff,var(--purple3));-webkit-background-clip:text;-webkit-text-fill-color:transparent}}
+.nav-badge{{background:var(--green);color:#fff;padding:3px 10px;border-radius:20px;font-size:0.72em;font-weight:700;letter-spacing:.05em;animation:blink 2s infinite}}
+@keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.5}}}}
+.nav-links{{display:flex;gap:24px;align-items:center}}
+.nav-link{{color:var(--muted);text-decoration:none;font-size:.88em;font-weight:500;transition:color .2s}}
+.nav-link:hover{{color:var(--purple3)}}
+
+/* TICKER */
+.ticker{{
+  background:linear-gradient(90deg,var(--card),var(--card2));
+  border-bottom:1px solid var(--border);
+  padding:10px 32px;
+  display:flex;gap:32px;overflow-x:auto;white-space:nowrap;
+  scrollbar-width:none;
+}}
+.ticker::-webkit-scrollbar{{display:none}}
+.tick-item{{display:flex;align-items:center;gap:8px}}
+.tick-sym{{color:var(--muted);font-size:.82em;font-weight:600}}
+.tick-val{{font-weight:700;font-size:.95em}}
+.tick-chg{{font-size:.78em;padding:2px 7px;border-radius:8px}}
+.up{{background:rgba(16,185,129,.15);color:var(--green)}}
+.dn{{background:rgba(239,68,68,.15);color:var(--red)}}
+
+/* HERO */
+.hero{{
+  text-align:center;padding:60px 20px 40px;
+  background:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(108,43,217,.18),transparent);
+}}
+.hero-logo{{width:110px;height:126px;object-fit:contain;margin:0 auto 20px;display:block;filter:drop-shadow(0 0 30px rgba(139,92,246,.5));animation:float 4s ease-in-out infinite}}
+@keyframes float{{0%,100%{{transform:translateY(0)}}50%{{transform:translateY(-12px)}}}}
+.hero-title{{font-size:2.8em;font-weight:900;background:linear-gradient(135deg,#fff 30%,var(--purple3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px}}
+.hero-sub{{color:var(--muted);font-size:1.05em;margin-bottom:20px}}
+.hero-badges{{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:30px}}
+.hbadge{{background:rgba(108,43,217,.15);border:1px solid rgba(139,92,246,.3);color:var(--purple3);padding:5px 14px;border-radius:20px;font-size:.82em;font-weight:500}}
+
+/* MAIN */
+.main{{max-width:1300px;margin:0 auto;padding:0 24px 60px}}
+
+/* STAT CARDS */
+.stats{{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:24px}}
+.scard{{
+  background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;
+  transition:border-color .25s,transform .25s;cursor:default;
+  position:relative;overflow:hidden;
+}}
+.scard::before{{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--purple),var(--purple3));opacity:0;transition:opacity .25s}}
+.scard:hover{{border-color:var(--purple2);transform:translateY(-3px)}}
+.scard:hover::before{{opacity:1}}
+.scard-icon{{font-size:1.6em;margin-bottom:10px}}
+.scard-label{{color:var(--muted);font-size:.75em;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}}
+.scard-value{{font-size:1.35em;font-weight:800;color:#fff}}
+.scard-sub{{color:var(--muted);font-size:.76em;margin-top:4px}}
+
+/* GRID 2 COL */
+.grid2{{display:grid;grid-template-columns:2fr 1fr;gap:20px;margin-bottom:24px}}
+.grid2b{{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}}
+@media(max-width:900px){{.grid2,.grid2b{{grid-template-columns:1fr}}}}
+
+/* PANEL */
+.panel{{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px}}
+.panel-title{{font-size:.92em;font-weight:700;color:var(--purple3);margin-bottom:18px;display:flex;align-items:center;gap:8px;text-transform:uppercase;letter-spacing:.06em}}
+
+/* SUPPLY BAR */
+.sup-row{{display:flex;justify-content:space-between;font-size:.82em;color:var(--muted);margin-bottom:6px}}
+.sup-bar-bg{{background:var(--border);border-radius:8px;height:10px;overflow:hidden;margin-bottom:6px}}
+.sup-bar{{background:linear-gradient(90deg,var(--purple),var(--purple3),#60a5fa);height:100%;border-radius:8px;transition:width 1.5s ease}}
+
+/* TABLE */
+table{{width:100%;border-collapse:collapse}}
+th{{color:var(--muted);font-size:.75em;text-transform:uppercase;letter-spacing:.06em;padding:10px 8px;text-align:left;border-bottom:1px solid var(--border)}}
+td{{padding:11px 8px;border-bottom:1px solid rgba(255,255,255,.04);font-size:.88em}}
+tr:hover td{{background:rgba(108,43,217,.07)}}
+.badge-sm{{background:var(--purple);color:#fff;padding:2px 8px;border-radius:8px;font-size:.78em;font-weight:600}}
+
+/* NODE BOX */
+.node-box{{background:rgba(108,43,217,.08);border:1px solid rgba(108,43,217,.4);border-radius:12px;padding:12px 16px;font-family:'Courier New',monospace;font-size:.84em;color:var(--green);margin-top:10px;word-break:break-all}}
+
+/* PRIVACY GRID */
+.pgrid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:14px}}
+.pitem{{background:rgba(108,43,217,.08);border:1px solid rgba(108,43,217,.25);border-radius:12px;padding:14px}}
+.pitem-icon{{font-size:1.4em;margin-bottom:6px}}
+.pitem-title{{font-weight:700;font-size:.85em;margin-bottom:3px}}
+.pitem-desc{{color:var(--muted);font-size:.78em;line-height:1.4}}
+
+/* FOOTER */
+footer{{text-align:center;padding:32px;color:var(--muted);border-top:1px solid var(--border);font-size:.84em}}
+footer a{{color:var(--purple3);text-decoration:none}}
+.footer-logo{{width:36px;height:41px;object-fit:contain;margin:0 auto 10px;display:block;opacity:.7}}
+</style>
 </head>
 <body>
 
-<div class="header">
-    <img src="/static/logo.png" width="55" height="65" alt="GhostCoin" style="object-fit:contain"/>
-    <div class="title">GhostCoin (GHST)</div>
-    <div class="subtitle">Privacy Blockchain — Level Monero/Zcash</div>
-    <div style="margin-top: 15px;">
-        <span class="privacy-badge">🔒 Stealth Addresses</span>
-        <span class="privacy-badge">💍 Ring Signatures</span>
-        <span class="privacy-badge">🔮 zk-SNARKs</span>
-        <span class="privacy-badge">🧅 Dandelion++</span>
-        <span class="privacy-badge">🛡️ Quantum-Safe</span>
-    </div>
+<!-- NAVBAR -->
+<nav>
+  <div class="nav-logo">
+    <img src="/static/logo.png" alt="GhostCoin"/>
+    <span class="nav-title">GhostCoin</span>
+    <span class="nav-badge">● LIVE</span>
+  </div>
+  <div class="nav-links">
+    <a href="/api/stats" class="nav-link">API</a>
+    <a href="/api/mempool" class="nav-link">Mempool</a>
+    <span style="color:var(--green);font-size:.85em;font-weight:600">🟢 Mainnet</span>
+  </div>
+</nav>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="tick-item">
+    <span class="tick-sym">👻 GHST</span>
+    <span class="tick-val">$0.0100</span>
+    <span class="tick-chg up">Mainnet</span>
+  </div>
+  <div class="tick-item">
+    <span class="tick-sym">₿ BTC</span>
+    <span class="tick-val" id="btcP">—</span>
+    <span class="tick-chg up" id="btcC">—</span>
+  </div>
+  <div class="tick-item">
+    <span class="tick-sym">Ξ ETH</span>
+    <span class="tick-val" id="ethP">—</span>
+    <span class="tick-chg up" id="ethC">—</span>
+  </div>
+  <div class="tick-item">
+    <span class="tick-sym">🔶 BNB</span>
+    <span class="tick-val" id="bnbP">—</span>
+    <span class="tick-chg up" id="bnbC">—</span>
+  </div>
+  <div class="tick-item" style="margin-left:auto">
+    <span class="tick-sym">🕐</span>
+    <span class="tick-val" id="upd" style="font-size:.82em">—</span>
+  </div>
 </div>
 
-<div class="container">
-
-    <!-- Stats principales -->
-    <div class="grid">
-        <div class="card">
-            <div class="card-icon">📦</div>
-            <div class="card-label">Block Height</div>
-            <div class="card-value">#{}</div>
-        </div>
-        <div class="card">
-            <div class="card-icon">👻</div>
-            <div class="card-label">Supply Miné</div>
-            <div class="card-value">{} GHST</div>
-        </div>
-        <div class="card">
-            <div class="card-icon">💰</div>
-            <div class="card-label">Supply Max</div>
-            <div class="card-value">50,000,000 GHST</div>
-        </div>
-        <div class="card">
-            <div class="card-icon">⛏️</div>
-            <div class="card-label">Block Reward</div>
-            <div class="card-value">{} GHST</div>
-        </div>
-        <div class="card">
-            <div class="card-icon">📝</div>
-            <div class="card-label">Mempool TX</div>
-            <div class="card-value">{}</div>
-        </div>
-        <div class="card">
-            <div class="card-icon">🌐</div>
-            <div class="card-label">Réseau</div>
-            <div class="card-value" style="color: #22c55e;">🟢 Online</div>
-        </div>
-    </div>
-
-    <!-- Détails blockchain -->
-    <div class="section">
-        <div class="section-title">⛓️ Blockchain Details</div>
-        <div class="stat-row">
-            <span class="stat-label">Algorithme PoW</span>
-            <span class="stat-value">SHA-256</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Privacy Layer</span>
-            <span class="stat-value">Ring Sig + Stealth + CT + zk-SNARKs</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Halving Interval</span>
-            <span class="stat-value">210,000 blocs</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Temps par bloc</span>
-            <span class="stat-value">~2 minutes</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Difficulté</span>
-            <span class="stat-value">{}</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Total TX</span>
-            <span class="stat-value">{}</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Total Fees</span>
-            <span class="stat-value">{} GHST</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Dernier bloc hash</span>
-            <span class="stat-value" style="font-size: 0.8em; color: #7c3aed;">{}...</span>
-        </div>
-    </div>
-
-    <!-- Tokenomics -->
-    <div class="section">
-        <div class="section-title">💎 Tokenomics</div>
-        <div class="stat-row">
-            <span class="stat-label">Nom</span>
-            <span class="stat-value">GhostCoin</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Symbole</span>
-            <span class="stat-value"><span class="badge">GHST</span></span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Supply Maximum</span>
-            <span class="stat-value">50,000,000 GHST</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Distribution</span>
-            <span class="stat-value">100% Minage (0% premine)</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Récompense initiale</span>
-            <span class="stat-value">65 GHST / bloc</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Progression supply</span>
-            <span class="stat-value">{:.4}%</span>
-        </div>
-    </div>
-
-    <!-- API -->
-    <div class="section">
-        <div class="section-title">🔌 API Endpoints</div>
-        <div class="stat-row">
-            <span class="stat-label">Stats réseau</span>
-            <span class="stat-value" style="color: #7c3aed;">/api/stats</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Mempool</span>
-            <span class="stat-value" style="color: #7c3aed;">/api/mempool</span>
-        </div>
-        <div class="stat-row">
-            <span class="stat-label">Noeud TCP</span>
-            <span class="stat-value" style="color: #22c55e;">shuttle.proxy.rlwy.net:48191</span>
-        </div>
-    </div>
-
+<!-- HERO -->
+<div class="hero">
+  <img src="/static/logo.png" alt="GhostCoin" class="hero-logo"/>
+  <div class="hero-title">GhostCoin (GHST)</div>
+  <div class="hero-sub">Privacy Blockchain — Monero / Zcash Level • Built with Rust 🦀</div>
+  <div class="hero-badges">
+    <span class="hbadge">🔒 Stealth Addresses</span>
+    <span class="hbadge">💍 Ring Signatures</span>
+    <span class="hbadge">🔮 zk-SNARKs</span>
+    <span class="hbadge">🧅 Dandelion++</span>
+    <span class="hbadge">🛡️ Quantum-Safe</span>
+    <span class="hbadge">🌀 MimbleWimble</span>
+  </div>
 </div>
 
-<div class="footer">
-    <div>👻 GhostCoin (GHST) — Privacy Blockchain</div>
-    <div>Built with Rust 🦀 | Powered by Railway 🚂</div>
-    <div class="refresh">Auto-refresh toutes les 30 secondes</div>
+<div class="main">
+
+<!-- STATS -->
+<div class="stats">
+  <div class="scard">
+    <div class="scard-icon">📦</div>
+    <div class="scard-label">Block Height</div>
+    <div class="scard-value">#{}</div>
+    <div class="scard-sub">Blocs minés</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">👻</div>
+    <div class="scard-label">Supply Miné</div>
+    <div class="scard-value">{} GHST</div>
+    <div class="scard-sub">{:.3}% du max</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">⛏️</div>
+    <div class="scard-label">Block Reward</div>
+    <div class="scard-value">{} GHST</div>
+    <div class="scard-sub">par bloc</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">📝</div>
+    <div class="scard-label">Mempool</div>
+    <div class="scard-value">{} TX</div>
+    <div class="scard-sub">en attente</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">⚡</div>
+    <div class="scard-label">Difficulté</div>
+    <div class="scard-value">{}</div>
+    <div class="scard-sub">ajustable</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">💸</div>
+    <div class="scard-label">Total Fees</div>
+    <div class="scard-value">{} GHST</div>
+    <div class="scard-sub">collectés</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">🔄</div>
+    <div class="scard-label">Total TX</div>
+    <div class="scard-value">{}</div>
+    <div class="scard-sub">confirmées</div>
+  </div>
+  <div class="scard">
+    <div class="scard-icon">🌐</div>
+    <div class="scard-label">Réseau</div>
+    <div class="scard-value" style="color:var(--green)">🟢 Online</div>
+    <div class="scard-sub">Railway US-West</div>
+  </div>
 </div>
 
+<!-- CHARTS -->
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">📈 Prix BTC / ETH — 7 jours</div>
+    <canvas id="priceChart" height="110"></canvas>
+  </div>
+  <div class="panel">
+    <div class="panel-title">🟣 Supply GHST</div>
+    <canvas id="supplyChart" height="160"></canvas>
+    <div style="margin-top:16px">
+      <div class="sup-row">
+        <span>Miné : {} GHST</span>
+        <span>Max : 50,000,000</span>
+      </div>
+      <div class="sup-bar-bg">
+        <div class="sup-bar" id="supBar" style="width:{:.3}%"></div>
+      </div>
+      <div class="sup-row">
+        <span style="color:var(--purple3)">{:.4}% complété</span>
+        <span>Restant : {} GHST</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOKENOMICS + NODE -->
+<div class="grid2b">
+  <div class="panel">
+    <div class="panel-title">💎 Tokenomics</div>
+    <table>
+      <tr><th>Paramètre</th><th>Valeur</th></tr>
+      <tr><td>Nom</td><td><strong>GhostCoin</strong></td></tr>
+      <tr><td>Symbole</td><td><span class="badge-sm">GHST</span></td></tr>
+      <tr><td>Supply Max</td><td>50,000,000 GHST</td></tr>
+      <tr><td>Distribution</td><td>100% Minage</td></tr>
+      <tr><td>Récompense</td><td>65 GHST / bloc</td></tr>
+      <tr><td>Halving</td><td>210,000 blocs</td></tr>
+      <tr><td>Algorithme</td><td>SHA-256 + zk-SNARKs</td></tr>
+      <tr><td>Langage</td><td>Rust 🦀</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <div class="panel-title">🌐 Connexion Réseau</div>
+    <p style="color:var(--muted);font-size:.85em;margin-bottom:8px">Connecte ton wallet au réseau GhostCoin :</p>
+    <div class="node-box">TCP → shuttle.proxy.rlwy.net:48191</div>
+    <div class="node-box" style="margin-top:8px">HTTP → ghostcoin-production.up.railway.app</div>
+    <div class="node-box" style="margin-top:8px">API → /api/stats</div>
+    <div style="margin-top:20px">
+      <div class="panel-title">📊 Dernier bloc</div>
+      <div class="node-box" style="color:var(--purple3)">{}...</div>
+    </div>
+  </div>
+</div>
+
+<!-- PRIVACY -->
+<div class="panel" style="margin-bottom:24px">
+  <div class="panel-title">🔒 Privacy Features — Niveau Militaire</div>
+  <div class="pgrid">
+    <div class="pitem">
+      <div class="pitem-icon">👤</div>
+      <div class="pitem-title">Stealth Addresses</div>
+      <div class="pitem-desc">Adresse unique jetable par TX — destinataire intraçable</div>
+    </div>
+    <div class="pitem">
+      <div class="pitem-icon">💍</div>
+      <div class="pitem-title">Ring Signatures</div>
+      <div class="pitem-desc">Signature parmi un groupe — expéditeur anonyme</div>
+    </div>
+    <div class="pitem">
+      <div class="pitem-icon">🔮</div>
+      <div class="pitem-title">zk-SNARKs Groth16</div>
+      <div class="pitem-desc">Preuve mathématique sans révéler les données</div>
+    </div>
+    <div class="pitem">
+      <div class="pitem-icon">🧅</div>
+      <div class="pitem-title">Dandelion++</div>
+      <div class="pitem-desc">Routing P2P — adresse IP intraçable</div>
+    </div>
+    <div class="pitem">
+      <div class="pitem-icon">🛡️</div>
+      <div class="pitem-title">Quantum-Safe</div>
+      <div class="pitem-desc">CRYSTALS-Dilithium — résistant aux ordinateurs quantiques</div>
+    </div>
+    <div class="pitem">
+      <div class="pitem-icon">🌀</div>
+      <div class="pitem-title">MimbleWimble</div>
+      <div class="pitem-desc">Cut-through — blockchain 10x plus légère</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<footer>
+  <img src="/static/logo.png" alt="GhostCoin" class="footer-logo"/>
+  <div><strong style="color:var(--text)">GhostCoin (GHST)</strong> — Privacy Blockchain</div>
+  <div style="margin-top:6px">Built with Rust 🦀 &nbsp;|&nbsp; Powered by <a href="https://railway.app">Railway</a> &nbsp;|&nbsp; © 2026 GhostCoin</div>
+  <div style="margin-top:8px;font-size:.78em">Auto-refresh toutes les 30 secondes</div>
+</footer>
+
+<script>
+// ── PRIX LIVE ──
+async function fetchPrices(){{
+  try{{
+    const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true');
+    const d=await r.json();
+    const fmt=(n)=>n>=1000?'$'+n.toLocaleString('en-US',{{maximumFractionDigits:0}}):'$'+n.toFixed(2);
+    const chg=(v,id,cid)=>{{
+      document.getElementById(id).textContent=fmt(v.usd);
+      const c=v.usd_24h_change.toFixed(2);
+      const el=document.getElementById(cid);
+      el.textContent=(c>0?'+':'')+c+'%';
+      el.className='tick-chg '+(c>0?'up':'dn');
+    }};
+    chg(d.bitcoin,'btcP','btcC');
+    chg(d.ethereum,'ethP','ethC');
+    chg(d.binancecoin,'bnbP','bnbC');
+    document.getElementById('upd').textContent=new Date().toLocaleTimeString();
+    return d;
+  }}catch(e){{console.warn('price err',e);}}
+}}
+
+// ── CHART PRIX 7J ──
+async function initPriceChart(){{
+  try{{
+    const [br,er]=await Promise.all([
+      fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=7&interval=daily'),
+      fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=7&interval=daily'),
+    ]);
+    const bd=await br.json();
+    const ed=await er.json();
+    const labels=bd.prices.map(p=>new Date(p[0]).toLocaleDateString('fr-FR',{{month:'short',day:'numeric'}}));
+    new Chart(document.getElementById('priceChart'),{{
+      type:'line',
+      data:{{
+        labels,
+        datasets:[
+          {{label:'BTC ($)',data:bd.prices.map(p=>p[1]),borderColor:'#f59e0b',backgroundColor:'rgba(245,158,11,.08)',yAxisID:'y',tension:.4,fill:true,pointRadius:3}},
+          {{label:'ETH ($)',data:ed.prices.map(p=>p[1]),borderColor:'#60a5fa',backgroundColor:'rgba(96,165,250,.08)',yAxisID:'y1',tension:.4,fill:true,pointRadius:3}},
+        ]
+      }},
+      options:{{
+        responsive:true,
+        interaction:{{mode:'index',intersect:false}},
+        plugins:{{legend:{{labels:{{color:'#94a3b8',font:{{size:11}}}}}}}},
+        scales:{{
+          x:{{ticks:{{color:'#475569',font:{{size:10}}}},grid:{{color:'#1e1e4a'}}}},
+          y:{{type:'linear',position:'left',ticks:{{color:'#f59e0b',font:{{size:10}},callback:v=>'$'+v.toLocaleString()}},grid:{{color:'#1e1e4a'}}}},
+          y1:{{type:'linear',position:'right',ticks:{{color:'#60a5fa',font:{{size:10}},callback:v=>'$'+v.toLocaleString()}},grid:{{drawOnChartArea:false}}}},
+        }}
+      }}
+    }});
+  }}catch(e){{console.warn('chart err',e);}}
+}}
+
+// ── CHART SUPPLY DONUT ──
+function initSupplyChart(){{
+  const minted={};
+  const rem=50000000-minted;
+  new Chart(document.getElementById('supplyChart'),{{
+    type:'doughnut',
+    data:{{
+      labels:['Miné','Restant'],
+      datasets:[{{
+        data:[minted,rem],
+        backgroundColor:['#6c2bd9','#1e1e4a'],
+        borderColor:['#8b5cf6','#2d2d6e'],
+        borderWidth:2,
+      }}]
+    }},
+    options:{{
+      responsive:true,cutout:'72%',
+      plugins:{{legend:{{labels:{{color:'#94a3b8',font:{{size:11}}}},position:'bottom'}}}}
+    }}
+  }});
+}}
+
+fetchPrices();
+initPriceChart();
+initSupplyChart();
+setInterval(fetchPrices,60000);
+setTimeout(()=>location.reload(),30000);
+</script>
 </body>
-</html>
-    "#,
+</html>"#,
         state.block_height,
         state.minted_supply,
+        pct,
         state.current_reward(),
         mempool.pending_count(),
         state.difficulty,
-        state.total_tx_count,
         state.total_fees,
+        state.total_tx_count,
+        state.minted_supply,
+        pct,
+        pct,
+        50_000_000u64.saturating_sub(state.minted_supply),
         &state.last_block_hash[..16.min(state.last_block_hash.len())],
-        state.minted_supply as f64 / 500_000.0,
+        state.minted_supply,
     ))
 }
 
 async fn api_stats() -> Json<Value> {
     let state   = ChainState::load();
     let mempool = Mempool::load();
-
     Json(json!({
-        "name":           "GhostCoin",
-        "symbol":         "GHST",
-        "block_height":   state.block_height,
-        "minted_supply":  state.minted_supply,
-        "max_supply":     50_000_000,
-        "block_reward":   state.current_reward(),
-        "difficulty":     state.difficulty,
-        "total_tx":       state.total_tx_count,
-        "total_fees":     state.total_fees,
-        "mempool_count":  mempool.pending_count(),
-        "last_hash":      state.last_block_hash,
-        "status":         "online",
-        "node":           "shuttle.proxy.rlwy.net:48191",
+        "name":          "GhostCoin",
+        "symbol":        "GHST",
+        "block_height":  state.block_height,
+        "minted_supply": state.minted_supply,
+        "max_supply":    50_000_000,
+        "block_reward":  state.current_reward(),
+        "difficulty":    state.difficulty,
+        "total_tx":      state.total_tx_count,
+        "total_fees":    state.total_fees,
+        "mempool_count": mempool.pending_count(),
+        "last_hash":     state.last_block_hash,
+        "status":        "online",
+        "node_tcp":      "shuttle.proxy.rlwy.net:48191",
+        "explorer":      "ghostcoin-production.up.railway.app",
     }))
 }
 
 async fn api_mempool() -> Json<Value> {
     let mempool = Mempool::load();
     let txs: Vec<Value> = mempool.sorted_by_priority()
-        .iter()
-        .take(20)
+        .iter().take(20)
         .map(|tx| json!({
             "tx_id":    tx.tx_id,
             "amount":   tx.amount,
@@ -318,7 +487,6 @@ async fn api_mempool() -> Json<Value> {
             "priority": tx.priority_label(),
         }))
         .collect();
-
     Json(json!({
         "count":        mempool.pending_count(),
         "total_fees":   mempool.total_fees(),
@@ -326,14 +494,12 @@ async fn api_mempool() -> Json<Value> {
     }))
 }
 
-// ==========================================
-// DÉMARRAGE DU SERVEUR WEB
-// ==========================================
 pub async fn start_web_server() {
     let app = Router::new()
         .route("/",            get(home))
         .route("/api/stats",   get(api_stats))
-        .route("/api/mempool", get(api_mempool));
+        .route("/api/mempool", get(api_mempool))
+        .nest_service("/static", ServeDir::new("static"));
 
     let port = std::env::var("PORT")
         .unwrap_or_else(|_| "8001".to_string())
@@ -342,16 +508,6 @@ pub async fn start_web_server() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("🌐 Web server démarré sur port {}", port);
-
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
-use tower_http::services::ServeDir;
-
-pub async fn start_web_server() {
-    let app = Router::new()
-        .route("/",            get(home))
-        .route("/api/stats",   get(api_stats))
-        .route("/api/mempool", get(api_mempool))
-        .nest_service("/static", ServeDir::new("static")); // ← ajoute ça
-        

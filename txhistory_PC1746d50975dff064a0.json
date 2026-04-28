@@ -118,5 +118,65 @@
       }
     },
     "note": ""
+  },
+  {
+    "tx_id": "coinbase_b3d62e94c099e82e",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-28 23:24:03 UTC",
+    "block_height": 34,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_6fabbac5a6b9d8dd",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-28 23:25:25 UTC",
+    "block_height": 35,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_01edf0db732c9fc3",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-28 23:25:27 UTC",
+    "block_height": 36,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
+  },
+  {
+    "tx_id": "coinbase_d9a9426af28ac18a",
+    "direction": "Mining",
+    "amount": 65,
+    "fee": 0,
+    "address": "coinbase",
+    "timestamp": "2026-04-28 23:25:34 UTC",
+    "block_height": 37,
+    "status": {
+      "Confirmed": {
+        "confirmations": 1
+      }
+    },
+    "note": ""
   }
 ]
