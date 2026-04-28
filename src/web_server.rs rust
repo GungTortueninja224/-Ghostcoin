@@ -130,7 +130,7 @@ async fn home() -> Html<String> {
 <body>
 
 <div class="header">
-    <div class="logo">👻</div>
+    <img src="/static/logo.png" width="55" height="65" alt="GhostCoin" style="object-fit:contain"/>
     <div class="title">GhostCoin (GHST)</div>
     <div class="subtitle">Privacy Blockchain — Level Monero/Zcash</div>
     <div style="margin-top: 15px;">
@@ -346,3 +346,12 @@ pub async fn start_web_server() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
+use tower_http::services::ServeDir;
+
+pub async fn start_web_server() {
+    let app = Router::new()
+        .route("/",            get(home))
+        .route("/api/stats",   get(api_stats))
+        .route("/api/mempool", get(api_mempool))
+        .nest_service("/static", ServeDir::new("static")); // ← ajoute ça
+        
