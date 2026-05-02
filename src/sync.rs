@@ -1,6 +1,6 @@
 use crate::chain_state::ChainState;
 use crate::miner::MinedBlock;
-use crate::node::{send_to_node, NodeMessage};
+use crate::node::{send_to_node, send_to_node_fire_and_forget, NodeMessage};
 use chrono::Utc;
 use std::fs;
 use std::path::Path;
@@ -183,7 +183,7 @@ impl ChainSync {
             block: block.clone(),
         };
         for peer in &self.peers {
-            send_to_node(peer, &msg).await;
+            send_to_node_fire_and_forget(peer, &msg).await;
         }
     }
 

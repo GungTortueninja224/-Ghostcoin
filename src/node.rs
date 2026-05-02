@@ -185,7 +185,13 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
             if !already_known && added > 0 {
                 let peers = state.peers.lock().unwrap().clone();
                 for peer in peers {
-                    let _ = send_to_node(&peer, &NodeMessage::NewBlockFull { block: block.clone() }).await;
+                    send_to_node_fire_and_forget(
+                        &peer,
+                        &NodeMessage::NewBlockFull {
+                            block: block.clone(),
+                        },
+                    )
+                    .await;
                 }
             }
 
@@ -236,6 +242,19 @@ pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> 
         Err(_) => {
             println!("❌ Impossible de joindre {}", addr);
             None
+        }
+    }
+}
+
+pub async fn send_to_node_fire_and_forget(addr: &str, msg: &NodeMessage) {
+    match TcpStream::connect(addr).await {
+        Ok(mut stream) => {
+            let json = serde_json::to_string(msg).unwrap();
+            let _ = stream.write_all(json.as_bytes()).await;
+            let _ = stream.shutdown().await;
+        }
+        Err(_) => {
+            println!("âŒ Impossible de joindre {}", addr);
         }
     }
 }
