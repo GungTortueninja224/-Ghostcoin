@@ -63,19 +63,10 @@ impl NodeState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NodeMessage {
-    Hello {
-        from_port: u16,
-    },
-    NewTx {
-        tx_data: String,
-    },
-    NewBlock {
-        block_index: u32,
-        hash: String,
-    },
-    NewBlockFull {
-        block: MinedBlock,
-    },
+    Hello { from_port: u16 },
+    NewTx { tx_data: String },
+    NewBlock { block_index: u32, hash: String },
+    NewBlockFull { block: MinedBlock },
     GetStatus,
     Status {
         port: u16,
@@ -88,13 +79,8 @@ pub enum NodeMessage {
         last_index: u32,
         last_hash: String,
     },
-    GetBlocksSince {
-        from_index: u32,
-        limit: usize,
-    },
-    Blocks {
-        blocks: Vec<MinedBlock>,
-    },
+    GetBlocksSince { from_index: u32, limit: usize },
+    Blocks { blocks: Vec<MinedBlock> },
     Ping,
     Pong,
 }
@@ -106,16 +92,13 @@ pub async fn run_node(state: NodeState) {
         "127.0.0.1"
     };
     let addr = format!("{}:{}", bind_host, state.port);
-    let listener = TcpListener::bind(&addr)
-        .await
-        .expect("Impossible de démarrer");
+    let listener = TcpListener::bind(&addr).await.expect("failed to bind node");
 
-    println!("🟢 Noeud {} démarré sur {}", state.port, addr);
+    println!("Node {} listening on {}", state.port, addr);
 
     loop {
         let (socket, peer_addr) = listener.accept().await.unwrap();
         let state_clone = state.clone();
-
         tokio::spawn(async move {
             handle_peer(socket, peer_addr.to_string(), state_clone).await;
         });
@@ -123,19 +106,21 @@ pub async fn run_node(state: NodeState) {
 }
 
 async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState) {
-    let mut buf = vec![0u8; 4096];
-
-    match socket.read(&mut buf).await {
+    // Read full payload instead of a fixed 4KB read to avoid truncating NewBlockFull JSON.
+    let mut buf = Vec::new();
+    match socket.read_to_end(&mut buf).await {
         Ok(n) if n > 0 => {
-            println!("📨 Message reçu de {}", peer_addr);
-            let raw = String::from_utf8_lossy(&buf[..n]);
-
-            if let Ok(msg) = serde_json::from_str::<NodeMessage>(&raw) {
-                let response = process_message(msg, &state).await;
-
-                if let Some(resp) = response {
-                    let json = serde_json::to_string(&resp).unwrap();
-                    let _ = socket.write_all(json.as_bytes()).await;
+            println!("Message received from {}", peer_addr);
+            match serde_json::from_slice::<NodeMessage>(&buf[..n]) {
+                Ok(msg) => {
+                    let response = process_message(msg, &state).await;
+                    if let Some(resp) = response {
+                        let json = serde_json::to_string(&resp).unwrap();
+                        let _ = socket.write_all(json.as_bytes()).await;
+                    }
+                }
+                Err(e) => {
+                    println!("Invalid message from {}: {}", peer_addr, e);
                 }
             }
         }
@@ -148,31 +133,24 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
         NodeMessage::Hello { from_port } => {
             let peer = format!("127.0.0.1:{}", from_port);
             state.add_peer(&peer);
-            println!("👋 Noeud {} : Hello de {}", state.port, from_port);
+            println!("Node {}: hello from {}", state.port, from_port);
             Some(NodeMessage::Pong)
         }
-
         NodeMessage::NewTx { tx_data } => {
             state.add_to_mempool(&tx_data);
-            println!(
-                "💸 Noeud {} : TX reçue — mempool: {}",
-                state.port,
-                state.mempool_size()
-            );
+            println!("Node {}: tx received (mempool {})", state.port, state.mempool_size());
             None
         }
-
         NodeMessage::NewBlock { block_index, hash } => {
             state.set_block_count(block_index);
             println!(
-                "📦 Noeud {} : Bloc {} reçu — {}...",
+                "Node {}: block {} received {}...",
                 state.port,
                 block_index,
                 &hash[..8.min(hash.len())]
             );
             None
         }
-
         NodeMessage::NewBlockFull { block } => {
             let block_hash = block.hash.clone();
             let already_known = state.chain.has_block_hash(&block_hash);
@@ -181,10 +159,7 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
             if added > 0 {
                 let tip = state.chain.last_index();
                 state.set_block_count(tip);
-                println!(
-                    "🔗 Noeud {} : bloc complet intégré (hauteur locale: #{})",
-                    state.port, tip
-                );
+                println!("Node {}: full block integrated (tip #{})", state.port, tip);
             }
 
             if !already_known && added > 0 {
@@ -199,17 +174,14 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
                     .await;
                 }
             }
-
             None
         }
-
         NodeMessage::GetStatus => Some(NodeMessage::Status {
             port: state.port,
             peers: state.peer_count(),
             mempool: state.mempool_size(),
             blocks: state.block_count(),
         }),
-
         NodeMessage::GetChainTip => {
             let (last_index, last_hash) = state.chain.tip();
             Some(NodeMessage::ChainTip {
@@ -217,14 +189,11 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
                 last_hash,
             })
         }
-
         NodeMessage::GetBlocksSince { from_index, limit } => {
             let blocks = state.chain.get_blocks_since(from_index, limit);
             Some(NodeMessage::Blocks { blocks })
         }
-
         NodeMessage::Ping => Some(NodeMessage::Pong),
-
         _ => None,
     }
 }
@@ -245,7 +214,7 @@ pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> 
             }
         }
         Err(_) => {
-            println!("❌ Impossible de joindre {}", addr);
+            println!("Unable to reach {}", addr);
             None
         }
     }
@@ -259,7 +228,7 @@ pub async fn send_to_node_fire_and_forget(addr: &str, msg: &NodeMessage) {
             let _ = stream.shutdown().await;
         }
         Err(_) => {
-            println!("âŒ Impossible de joindre {}", addr);
+            println!("Unable to reach {}", addr);
         }
     }
 }
