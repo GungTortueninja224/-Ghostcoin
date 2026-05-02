@@ -3,13 +3,41 @@ use crate::config::GhostCoinConfig;
 use crate::node::{run_node, NodeState};
 use crate::sync::SharedChain;
 use crate::web_server::start_web_server_on_port;
+use std::fs;
+use std::path::Path;
 
 fn env_port(key: &str) -> Option<u16> {
     std::env::var(key).ok()?.parse::<u16>().ok()
 }
 
+fn env_flag(key: &str) -> bool {
+    matches!(
+        std::env::var(key),
+        Ok(ref v) if v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+    )
+}
+
+fn reset_chain_if_requested() {
+    if !env_flag("RESET_CHAIN") {
+        return;
+    }
+
+    println!("RESET_CHAIN=true detecte: reinitialisation des fichiers chain...");
+    for file in ["ghostcoin_blocks.json", "ghostcoin_chain.json"] {
+        if Path::new(file).exists() {
+            match fs::remove_file(file) {
+                Ok(_) => println!("  - supprime {}", file),
+                Err(e) => println!("  - echec suppression {}: {}", file, e),
+            }
+        } else {
+            println!("  - absent {}", file);
+        }
+    }
+}
+
 pub async fn run_server_mode() {
     let config = GhostCoinConfig::new();
+    reset_chain_if_requested();
 
     println!("â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—");
     println!("â•‘         ðŸ‘» GHOSTCOIN NODE â€” SERVER MODE                 â•‘");
