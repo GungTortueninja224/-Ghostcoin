@@ -58,7 +58,7 @@ mod tests {
     fn test_double_spend_prevention() {
         // Solde 100, essaie de dépenser 150 → refus
         let balance: u64 = 100;
-        let spend:   u64 = 150;
+        let spend: u64 = 150;
         assert!(spend > balance, "Double spend détecté correctement");
     }
 
@@ -75,5 +75,44 @@ mod tests {
         state.block_height = HALVING_INTERVAL / 2;
         let progress = state.halving_progress();
         assert!((progress - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_blockchain_rejects_tampering() {
+        let mut chain = crate::blockchain::Blockchain::new();
+        chain.add_block("tx:a->b:10".to_string()).unwrap();
+        assert!(chain.is_valid());
+
+        chain.chain[1].data = "tx:a->b:999999".to_string();
+        assert!(!chain.is_valid());
+    }
+
+    #[test]
+    fn test_mempool_rejects_invalid_tx() {
+        let tx = crate::mempool::MempoolTx::new("bad", "same", "same", 0, 1);
+        assert!(tx.validate().is_err());
+    }
+
+    #[test]
+    fn test_wallet_storage_round_trip_v2() {
+        let path = ".test_wallet_storage.ghst";
+        let _ = std::fs::remove_file(path);
+
+        assert!(crate::storage::save_wallet(
+            "PC1-test",
+            b"scan-private",
+            b"spend-private",
+            42,
+            "strong-password",
+            path,
+        ));
+
+        let wallet = crate::storage::load_wallet(path, "strong-password").unwrap();
+        assert_eq!(wallet.address, "PC1-test");
+        assert_eq!(wallet.balance, 42);
+        assert_eq!(wallet.version, "2.0.0");
+        assert!(crate::storage::load_wallet(path, "wrong-password").is_none());
+
+        let _ = std::fs::remove_file(path);
     }
 }

@@ -1,34 +1,34 @@
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use serde::{Serialize, Deserialize};
-use chrono::Utc;
 
 pub const CHAIN_STATE_PATH: &str = "ghostcoin_chain.json";
-pub const MAX_SUPPLY:        u64  = 50_000_000;
-pub const INITIAL_REWARD:    u64  = 65;
-pub const HALVING_INTERVAL:  u64  = 210_000;
+pub const MAX_SUPPLY: u64 = 50_000_000;
+pub const INITIAL_REWARD: u64 = 65;
+pub const HALVING_INTERVAL: u64 = 210_000;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChainState {
-    pub block_height:    u64,
-    pub minted_supply:   u64,
-    pub difficulty:      usize,
+    pub block_height: u64,
+    pub minted_supply: u64,
+    pub difficulty: usize,
     pub last_block_hash: String,
     pub last_block_time: i64,
-    pub total_tx_count:  u64,
-    pub total_fees:      u64,
+    pub total_tx_count: u64,
+    pub total_fees: u64,
 }
 
 impl ChainState {
     pub fn new() -> Self {
         Self {
-            block_height:    0,
-            minted_supply:   0,
-            difficulty:      4,
+            block_height: 0,
+            minted_supply: 0,
+            difficulty: 4,
             last_block_hash: "0".to_string(),
             last_block_time: Utc::now().timestamp(),
-            total_tx_count:  0,
-            total_fees:      0,
+            total_tx_count: 0,
+            total_fees: 0,
         }
     }
 
@@ -43,15 +43,18 @@ impl ChainState {
     }
 
     pub fn save(&self) {
-        let json = serde_json::to_string_pretty(self).unwrap();
-        let _    = fs::write(CHAIN_STATE_PATH, json);
+        if let Ok(json) = serde_json::to_string_pretty(self) {
+            let _ = fs::write(CHAIN_STATE_PATH, json);
+        }
     }
 
     pub fn current_reward(&self) -> u64 {
         let halvings = self.block_height / HALVING_INTERVAL;
-        if halvings >= 64 { return 0; }
+        if halvings >= 64 {
+            return 0;
+        }
         let reward = INITIAL_REWARD >> halvings;
-        if self.minted_supply + reward > MAX_SUPPLY {
+        if self.minted_supply.saturating_add(reward) > MAX_SUPPLY {
             MAX_SUPPLY - self.minted_supply
         } else {
             reward
@@ -73,12 +76,12 @@ impl ChainState {
     }
 
     pub fn add_block(&mut self, hash: &str, reward: u64, fees: u64, tx_count: u64) {
-        self.block_height    += 1;
-        self.minted_supply   += reward;
-        self.last_block_hash  = hash.to_string();
-        self.last_block_time  = Utc::now().timestamp();
-        self.total_tx_count  += tx_count;
-        self.total_fees      += fees;
+        self.block_height = self.block_height.saturating_add(1);
+        self.minted_supply = self.minted_supply.saturating_add(reward).min(MAX_SUPPLY);
+        self.last_block_hash = hash.to_string();
+        self.last_block_time = Utc::now().timestamp();
+        self.total_tx_count = self.total_tx_count.saturating_add(tx_count);
+        self.total_fees = self.total_fees.saturating_add(fees);
         self.save();
     }
 
@@ -88,15 +91,33 @@ impl ChainState {
         println!("║              📊 GHOSTCOIN NETWORK STATS                 ║");
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║  Block Height   : {:<38} ║", self.block_height);
-        println!("║  Minted Supply  : {:<38} ║", format!("{} GHST", self.minted_supply));
-        println!("║  Max Supply     : {:<38} ║", format!("{} GHST", MAX_SUPPLY));
-        println!("║  Remaining      : {:<38} ║", format!("{} GHST", self.remaining_supply()));
+        println!(
+            "║  Minted Supply  : {:<38} ║",
+            format!("{} GHST", self.minted_supply)
+        );
+        println!(
+            "║  Max Supply     : {:<38} ║",
+            format!("{} GHST", MAX_SUPPLY)
+        );
+        println!(
+            "║  Remaining      : {:<38} ║",
+            format!("{} GHST", self.remaining_supply())
+        );
         println!("║  Block Reward   : {:<38} ║", format!("{} GHST", reward));
-        println!("║  Next Halving   : {:<38} ║", format!("bloc #{}", self.next_halving_block()));
-        println!("║  Halving Prog.  : {:<38} ║", format!("{:.2}%", self.halving_progress()));
+        println!(
+            "║  Next Halving   : {:<38} ║",
+            format!("bloc #{}", self.next_halving_block())
+        );
+        println!(
+            "║  Halving Prog.  : {:<38} ║",
+            format!("{:.2}%", self.halving_progress())
+        );
         println!("║  Difficulty     : {:<38} ║", self.difficulty);
         println!("║  Total TX       : {:<38} ║", self.total_tx_count);
-        println!("║  Total Fees     : {:<38} ║", format!("{} GHST", self.total_fees));
+        println!(
+            "║  Total Fees     : {:<38} ║",
+            format!("{} GHST", self.total_fees)
+        );
         println!("╚══════════════════════════════════════════════════════════╝");
     }
 }
