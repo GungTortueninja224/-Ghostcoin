@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::tx_store::{WalletTx, TxDirection, TxStatus};
+    use crate::chain_state::{ChainState, HALVING_INTERVAL, INITIAL_REWARD, MAX_SUPPLY};
+
     #[test]
     fn test_initial_reward() {
         let state = ChainState::new();
@@ -45,8 +46,8 @@ mod tests {
 
     #[test]
     fn test_tx_balance() {
-        use crate::tx_store::{WalletTxStore, WalletTx, TxDirection, TxStatus};
-        // Test basique que le store compile correctement
+        use crate::tx_store::{TxDirection, TxStatus, WalletTx};
+
         let tx = WalletTx::new_received("tx_test_001", 100, "sender_addr");
         assert_eq!(tx.amount, 100);
         assert_eq!(tx.direction, TxDirection::Received);

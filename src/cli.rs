@@ -339,9 +339,6 @@ impl Cli {
     // Affiche le portfolio actuel
     engine.portfolio.show(&prices);
 
-    // Cryptos disponibles
-    let cryptos = vec!["GHST", "BTC", "ETH", "USDT", "BNB"];
-
     println!("\n┌──────────────────────────────────┐");
     println!("│  1. GHST → BTC                  │");
     println!("│  2. GHST → ETH                  │");

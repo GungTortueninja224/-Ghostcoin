@@ -95,6 +95,7 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
 
     match socket.read(&mut buf).await {
         Ok(n) if n > 0 => {
+            println!("📨 Message reçu de {}", peer_addr);
             let raw = String::from_utf8_lossy(&buf[..n]);
 
             match serde_json::from_str::<NodeMessage>(&raw) {

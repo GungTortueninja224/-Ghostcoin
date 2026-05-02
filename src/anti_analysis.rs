@@ -28,7 +28,7 @@ impl AmountSplitter {
         let mut remaining = amount;
         let mut splits = Vec::new();
 
-        for i in 0..parts - 1 {
+        for _ in 0..parts - 1 {
             if remaining == 0 { break; }
 
             // Part aléatoire entre 10% et 60% du restant

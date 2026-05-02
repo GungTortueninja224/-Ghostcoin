@@ -1,0 +1,7 @@
+target/
+*.wallet
+*.ghst
+ghostcoin_*.json
+ghostcoin.log
+portfolio_*.json
+txhistory_*.json
