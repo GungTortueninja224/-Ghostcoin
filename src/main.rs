@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, unused)]
 
 mod anti_analysis;
 mod atomic_swap;
