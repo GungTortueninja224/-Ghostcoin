@@ -42,7 +42,7 @@ use node::{run_node, send_to_node, NodeMessage, NodeState};
 use std::env;
 use std::io::{self, Write};
 use storage::{load_wallet, save_wallet, wallet_exists};
-use sync::SharedChain;
+use sync::{ChainSync, SharedChain};
 use tokio::time::{sleep, Duration};
 
 const DEFAULT_SEED_NODE: &str = "shuttle.proxy.rlwy.net:48191";
@@ -280,9 +280,11 @@ async fn main() {
     // ── NOEUDS P2P ───────────────────────────────
     println!("\n🌐 Démarrage du réseau...");
 
-    let node1 = NodeState::new(8001);
-    let node2 = NodeState::new(8002);
-    let node3 = NodeState::new(8003);
+
+    let shared_chain = SharedChain::new();
+    let node1 = NodeState::new(8001, shared_chain.clone());
+    let node2 = NodeState::new(8002, shared_chain.clone());
+    let node3 = NodeState::new(8003, shared_chain.clone());
 
     node1.add_peer("127.0.0.1:8002");
     node1.add_peer("127.0.0.1:8003");
@@ -310,6 +312,23 @@ async fn main() {
     sleep(Duration::from_millis(100)).await;
 
     println!("\n📊 Réseau {} :", config.name);
+    let bootstrap_sync = ChainSync::new_with_chain(
+        shared_chain.clone(),
+        vec![
+            DEFAULT_SEED_NODE.to_string(),
+            "127.0.0.1:8001".to_string(),
+            "127.0.0.1:8002".to_string(),
+            "127.0.0.1:8003".to_string(),
+        ],
+    );
+
+    let synced_blocks = bootstrap_sync.sync_from_peers().await;
+    if synced_blocks > 0 {
+        println!("Sync P2P terminee : {} bloc(s) importe(s)", synced_blocks);
+    } else {
+        println!("Sync P2P : aucun nouveau bloc importe");
+    }
+
     for port in [8001u16, 8002, 8003] {
         let addr = format!("127.0.0.1:{}", port);
         if let Some(NodeMessage::Status {
@@ -325,8 +344,6 @@ async fn main() {
             );
         }
     }
-
-    let shared_chain = SharedChain::new();
     println!("\n✅ {} opérationnel !\n", config.name);
 
     let mut cli = cli::Cli::new_with_balance(

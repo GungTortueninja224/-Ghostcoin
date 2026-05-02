@@ -1,10 +1,14 @@
-use std::sync::{Arc, Mutex};
+use crate::chain_state::ChainState;
+use crate::miner::MinedBlock;
+use crate::node::{send_to_node, NodeMessage};
+use chrono::Utc;
 use std::fs;
 use std::path::Path;
-use crate::miner::MinedBlock;
-use crate::node::{NodeMessage, send_to_node};
+use std::sync::{Arc, Mutex};
 
 const BLOCKS_FILE: &str = "ghostcoin_blocks.json";
+const SYNC_CHUNK_SIZE: usize = 128;
+const SYNC_CHUNK_MAX: usize = 512;
 
 #[derive(Clone)]
 pub struct SharedChain {
@@ -13,7 +17,6 @@ pub struct SharedChain {
 
 impl SharedChain {
     pub fn new() -> Self {
-        // Charge les blocs depuis le disque au démarrage
         let blocks = Self::load_from_disk();
         println!("📦 {} bloc(s) chargé(s) depuis le disque", blocks.len());
 
@@ -22,7 +25,6 @@ impl SharedChain {
         }
     }
 
-    // Charge les blocs depuis le fichier JSON
     fn load_from_disk() -> Vec<MinedBlock> {
         if !Path::new(BLOCKS_FILE).exists() {
             return vec![];
@@ -31,18 +33,110 @@ impl SharedChain {
         serde_json::from_str(&json).unwrap_or_default()
     }
 
-    // Sauvegarde tous les blocs sur le disque
     fn save_to_disk(blocks: &[MinedBlock]) {
         let json = serde_json::to_string_pretty(blocks).unwrap();
-        let _    = fs::write(BLOCKS_FILE, json);
+        let _ = fs::write(BLOCKS_FILE, json);
+    }
+
+    fn rebuild_chain_state(blocks: &[MinedBlock]) {
+        let current = ChainState::load();
+        let mut rebuilt = ChainState::new();
+        rebuilt.difficulty = current.difficulty;
+
+        for block in blocks {
+            let reward = rebuilt.current_reward();
+            let minted_this_block = reward.saturating_add(block.fees_collected);
+
+            rebuilt.block_height = rebuilt.block_height.saturating_add(1);
+            rebuilt.minted_supply = rebuilt
+                .minted_supply
+                .saturating_add(minted_this_block)
+                .min(crate::chain_state::MAX_SUPPLY);
+            rebuilt.last_block_hash = block.hash.clone();
+            rebuilt.last_block_time = Utc::now().timestamp();
+            rebuilt.total_tx_count = rebuilt.total_tx_count.saturating_add(block.tx_count as u64);
+            rebuilt.total_fees = rebuilt.total_fees.saturating_add(block.fees_collected);
+        }
+
+        rebuilt.save();
     }
 
     pub fn add_block(&self, block: MinedBlock) {
         let mut chain = self.blocks.lock().unwrap();
+        if chain
+            .iter()
+            .any(|existing| existing.hash == block.hash || existing.index == block.index)
+        {
+            return;
+        }
         chain.push(block);
-        // Sauvegarde immédiatement sur disque
+        chain.sort_by_key(|b| b.index);
         Self::save_to_disk(&chain);
+        Self::rebuild_chain_state(&chain);
         println!("💾 Bloc sauvegardé sur disque");
+    }
+
+    pub fn merge_blocks_from_network(&self, mut incoming: Vec<MinedBlock>) -> usize {
+        if incoming.is_empty() {
+            return 0;
+        }
+
+        incoming.sort_by_key(|b| b.index);
+        let mut chain = self.blocks.lock().unwrap();
+        let mut known_hashes: std::collections::HashSet<String> =
+            chain.iter().map(|b| b.hash.clone()).collect();
+        let mut added = 0usize;
+
+        for block in incoming {
+            if known_hashes.contains(&block.hash) {
+                continue;
+            }
+            if chain.iter().any(|existing| existing.index == block.index) {
+                continue;
+            }
+
+            let parent_known = if block.index == 1 {
+                block.previous_hash == "0"
+            } else {
+                known_hashes.contains(&block.previous_hash)
+            };
+
+            if !parent_known {
+                continue;
+            }
+
+            known_hashes.insert(block.hash.clone());
+            chain.push(block);
+            added = added.saturating_add(1);
+        }
+
+        if added > 0 {
+            chain.sort_by_key(|b| b.index);
+            Self::save_to_disk(&chain);
+            Self::rebuild_chain_state(&chain);
+            println!("🔄 Sync P2P: {} bloc(s) intégré(s)", added);
+        }
+
+        added
+    }
+
+    pub fn get_blocks_since(&self, from_index: u32, limit: usize) -> Vec<MinedBlock> {
+        let chain = self.blocks.lock().unwrap();
+        let capped = limit.clamp(1, SYNC_CHUNK_MAX);
+        chain
+            .iter()
+            .filter(|b| b.index > from_index)
+            .take(capped)
+            .cloned()
+            .collect()
+    }
+
+    pub fn has_block_hash(&self, hash: &str) -> bool {
+        self.blocks
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|block| block.hash == hash)
     }
 
     pub fn length(&self) -> usize {
@@ -51,7 +145,8 @@ impl SharedChain {
 
     pub fn last_hash(&self) -> String {
         let chain = self.blocks.lock().unwrap();
-        chain.last()
+        chain
+            .last()
             .map(|b| b.hash.clone())
             .unwrap_or_else(|| "0".to_string())
     }
@@ -59,6 +154,10 @@ impl SharedChain {
     pub fn last_index(&self) -> u32 {
         let chain = self.blocks.lock().unwrap();
         chain.last().map(|b| b.index).unwrap_or(0)
+    }
+
+    pub fn tip(&self) -> (u32, String) {
+        (self.length() as u32, self.last_hash())
     }
 }
 
@@ -75,10 +174,13 @@ impl ChainSync {
         }
     }
 
+    pub fn new_with_chain(chain: SharedChain, peers: Vec<String>) -> Self {
+        Self { chain, peers }
+    }
+
     pub async fn broadcast_block(&self, block: &MinedBlock) {
-        let msg = NodeMessage::NewBlock {
-            block_index: block.index,
-            hash:        block.hash.clone(),
+        let msg = NodeMessage::NewBlockFull {
+            block: block.clone(),
         };
         for peer in &self.peers {
             send_to_node(peer, &msg).await;
@@ -90,8 +192,66 @@ impl ChainSync {
         for peer in &self.peers {
             match send_to_node(peer, &NodeMessage::Ping).await {
                 Some(_) => println!("   🟢 {} — en ligne", peer),
-                None    => println!("   🔴 {} — hors ligne", peer),
+                None => println!("   🔴 {} — hors ligne", peer),
             }
         }
+    }
+
+    pub async fn sync_from_peers(&self) -> usize {
+        let mut total_added = 0usize;
+        let mut local_tip = self.chain.length() as u32;
+
+        loop {
+            let mut best_peer: Option<String> = None;
+            let mut best_height = local_tip;
+
+            for peer in &self.peers {
+                if let Some(NodeMessage::ChainTip { last_index, .. }) =
+                    send_to_node(peer, &NodeMessage::GetChainTip).await
+                {
+                    if last_index > best_height {
+                        best_height = last_index;
+                        best_peer = Some(peer.clone());
+                    }
+                }
+            }
+
+            let Some(peer) = best_peer else {
+                break;
+            };
+            if best_height <= local_tip {
+                break;
+            }
+
+            let response = send_to_node(
+                &peer,
+                &NodeMessage::GetBlocksSince {
+                    from_index: local_tip,
+                    limit: SYNC_CHUNK_SIZE,
+                },
+            )
+            .await;
+
+            let Some(NodeMessage::Blocks { blocks }) = response else {
+                break;
+            };
+            if blocks.is_empty() {
+                break;
+            }
+
+            let added = self.chain.merge_blocks_from_network(blocks);
+            if added == 0 {
+                break;
+            }
+
+            total_added = total_added.saturating_add(added);
+            local_tip = self.chain.length() as u32;
+
+            if local_tip >= best_height {
+                break;
+            }
+        }
+
+        total_added
     }
 }

@@ -3,7 +3,7 @@ use crate::wallet::{Wallet, validate_address};
 use crate::dandelion::DandelionRouter;
 use crate::fees::{FeeCalculator, FeePriority};
 use crate::explorer::BlockExplorer;
-use crate::sync::SharedChain;
+use crate::sync::{ChainSync, SharedChain};
 use crate::storage::{broadcast_tx, claim_incoming, PendingTx};
 use crate::tx_store::{WalletTxStore, WalletTx};
 use crate::chain_state::ChainState;
@@ -485,6 +485,21 @@ impl Cli {
         let block     = miner.mine_block(&self.explorer.chain);
         let reward    = miner.total_mined;
         self.explorer.chain.add_block(block.clone());
+
+        let chain_sync = ChainSync::new_with_chain(
+            self.explorer.chain.clone(),
+            vec![
+                "127.0.0.1:8001".to_string(),
+                "127.0.0.1:8002".to_string(),
+                "127.0.0.1:8003".to_string(),
+                "shuttle.proxy.rlwy.net:48191".to_string(),
+            ],
+        );
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(chain_sync.broadcast_block(&block))
+        });
+        println!("🌐 Bloc diffusé au réseau P2P");
+
         if reward > 0 {
             let new_state = ChainState::load();
             let tx_id     = format!("coinbase_{:016x}", rand::random::<u64>());
