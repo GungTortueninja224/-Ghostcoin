@@ -17,7 +17,12 @@ pub struct SharedChain {
 
 impl SharedChain {
     pub fn new() -> Self {
-        let blocks = Self::load_from_disk();
+        let mut blocks = Self::load_from_disk();
+        let canonical = Self::canonicalize_blocks(blocks.clone());
+        if canonical.len() != blocks.len() {
+            blocks = canonical;
+            Self::save_to_disk(&blocks);
+        }
         println!("📦 {} bloc(s) chargé(s) depuis le disque", blocks.len());
 
         Self {
@@ -36,6 +41,32 @@ impl SharedChain {
     fn save_to_disk(blocks: &[MinedBlock]) {
         let json = serde_json::to_string_pretty(blocks).unwrap();
         let _ = fs::write(BLOCKS_FILE, json);
+    }
+
+    fn canonicalize_blocks(mut blocks: Vec<MinedBlock>) -> Vec<MinedBlock> {
+        if blocks.is_empty() {
+            return blocks;
+        }
+
+        blocks.sort_by_key(|b| b.index);
+        let mut canonical = Vec::new();
+        let mut expected_index = 1u32;
+        let mut expected_prev = "0".to_string();
+
+        for block in blocks {
+            if block.index != expected_index {
+                continue;
+            }
+            if block.previous_hash != expected_prev {
+                continue;
+            }
+
+            expected_index = expected_index.saturating_add(1);
+            expected_prev = block.hash.clone();
+            canonical.push(block);
+        }
+
+        canonical
     }
 
     fn rebuild_chain_state(blocks: &[MinedBlock]) {
@@ -96,9 +127,13 @@ impl SharedChain {
             }
 
             let parent_known = if block.index == 1 {
-                block.previous_hash == "0"
+                block.previous_hash == "0" && chain.is_empty()
             } else {
-                known_hashes.contains(&block.previous_hash)
+                chain
+                    .iter()
+                    .find(|existing| existing.hash == block.previous_hash)
+                    .map(|parent| parent.index.saturating_add(1) == block.index)
+                    .unwrap_or(false)
             };
 
             if !parent_known {
@@ -157,7 +192,7 @@ impl SharedChain {
     }
 
     pub fn tip(&self) -> (u32, String) {
-        (self.length() as u32, self.last_hash())
+        (self.last_index(), self.last_hash())
     }
 }
 
@@ -199,7 +234,7 @@ impl ChainSync {
 
     pub async fn sync_from_peers(&self) -> usize {
         let mut total_added = 0usize;
-        let mut local_tip = self.chain.length() as u32;
+        let mut local_tip = self.chain.last_index();
 
         loop {
             let mut best_peer: Option<String> = None;
@@ -245,7 +280,7 @@ impl ChainSync {
             }
 
             total_added = total_added.saturating_add(added);
-            local_tip = self.chain.length() as u32;
+            local_tip = self.chain.last_index();
 
             if local_tip >= best_height {
                 break;

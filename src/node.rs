@@ -16,7 +16,7 @@ pub struct NodeState {
 
 impl NodeState {
     pub fn new(port: u16, chain: SharedChain) -> Self {
-        let initial_count = chain.length() as u32;
+        let initial_count = chain.last_index();
         Self {
             port,
             peers: Arc::new(Mutex::new(vec![])),
@@ -50,7 +50,7 @@ impl NodeState {
 
     pub fn block_count(&self) -> u32 {
         let in_memory = *self.block_count.lock().unwrap();
-        in_memory.max(self.chain.length() as u32)
+        in_memory.max(self.chain.last_index())
     }
 
     pub fn set_block_count(&self, count: u32) {
