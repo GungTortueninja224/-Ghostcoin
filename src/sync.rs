@@ -17,12 +17,7 @@ pub struct SharedChain {
 
 impl SharedChain {
     pub fn new() -> Self {
-        let mut blocks = Self::load_from_disk();
-        let canonical = Self::canonicalize_blocks(blocks.clone());
-        if canonical.len() != blocks.len() {
-            blocks = canonical;
-            Self::save_to_disk(&blocks);
-        }
+        let blocks = Self::load_from_disk();
         println!("📦 {} bloc(s) chargé(s) depuis le disque", blocks.len());
 
         Self {
@@ -43,38 +38,31 @@ impl SharedChain {
         let _ = fs::write(BLOCKS_FILE, json);
     }
 
-    fn canonicalize_blocks(mut blocks: Vec<MinedBlock>) -> Vec<MinedBlock> {
-        if blocks.is_empty() {
-            return blocks;
-        }
-
-        blocks.sort_by_key(|b| b.index);
-        let mut canonical = Vec::new();
-        let mut expected_index = 1u32;
-        let mut expected_prev = "0".to_string();
-
-        for block in blocks {
-            if block.index != expected_index {
-                continue;
-            }
-            if block.previous_hash != expected_prev {
-                continue;
-            }
-
-            expected_index = expected_index.saturating_add(1);
-            expected_prev = block.hash.clone();
-            canonical.push(block);
-        }
-
-        canonical
-    }
-
     fn rebuild_chain_state(blocks: &[MinedBlock]) {
         let current = ChainState::load();
         let mut rebuilt = ChainState::new();
         rebuilt.difficulty = current.difficulty;
+        let mut use_current_as_base = false;
+
+        if let Some(first) = blocks.first() {
+            if first.index > 1
+                && current.block_height.saturating_add(1) == first.index as u64
+                && current.last_block_hash == first.previous_hash
+            {
+                rebuilt.block_height = current.block_height;
+                rebuilt.minted_supply = current.minted_supply;
+                rebuilt.total_tx_count = current.total_tx_count;
+                rebuilt.total_fees = current.total_fees;
+                rebuilt.last_block_hash = current.last_block_hash.clone();
+                rebuilt.last_block_time = current.last_block_time;
+                use_current_as_base = true;
+            }
+        }
 
         for block in blocks {
+            if use_current_as_base && block.index <= rebuilt.block_height as u32 {
+                continue;
+            }
             let reward = rebuilt.current_reward();
             let minted_this_block = reward.saturating_add(block.fees_collected);
 
@@ -128,12 +116,17 @@ impl SharedChain {
 
             let parent_known = if block.index == 1 {
                 block.previous_hash == "0" && chain.is_empty()
+            } else if let Some(parent) = chain
+                .iter()
+                .find(|existing| existing.hash == block.previous_hash)
+            {
+                parent.index.saturating_add(1) == block.index
+            } else if chain.is_empty() {
+                let state = ChainState::load();
+                state.block_height.saturating_add(1) == block.index as u64
+                    && state.last_block_hash == block.previous_hash
             } else {
-                chain
-                    .iter()
-                    .find(|existing| existing.hash == block.previous_hash)
-                    .map(|parent| parent.index.saturating_add(1) == block.index)
-                    .unwrap_or(false)
+                false
             };
 
             if !parent_known {
