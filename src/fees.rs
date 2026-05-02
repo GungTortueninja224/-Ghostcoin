@@ -10,20 +10,28 @@ impl FeeCalculator {
 
     // Calcule les frais selon priorité
     pub fn calculate(amount: u64, priority: FeePriority) -> u64 {
-        let base = match priority {
-            FeePriority::Low    => (amount / 1000).max(Self::MIN_FEE),
+        match priority {
+            FeePriority::Low => (amount / 1000).max(Self::MIN_FEE),
             FeePriority::Normal => (amount / 500).max(Self::MIN_FEE * 2),
-            FeePriority::High   => (amount / 200).max(Self::MIN_FEE * 5),
-        };
-        base
+            FeePriority::High => (amount / 200).max(Self::MIN_FEE * 5),
+        }
     }
 
     // Affiche les frais estimés
     pub fn show_estimate(amount: u64) {
         println!("\n💸 Estimation des frais pour {} GHST :", amount);
-        println!("   🐢 Lent   : {} GHST (~10 min)", Self::calculate(amount, FeePriority::Low));
-        println!("   🚶 Normal : {} GHST (~2 min)",  Self::calculate(amount, FeePriority::Normal));
-        println!("   🚀 Rapide : {} GHST (~30 sec)", Self::calculate(amount, FeePriority::High));
+        println!(
+            "   🐢 Lent   : {} GHST (~10 min)",
+            Self::calculate(amount, FeePriority::Low)
+        );
+        println!(
+            "   🚶 Normal : {} GHST (~2 min)",
+            Self::calculate(amount, FeePriority::Normal)
+        );
+        println!(
+            "   🚀 Rapide : {} GHST (~30 sec)",
+            Self::calculate(amount, FeePriority::High)
+        );
     }
 }
 
@@ -39,7 +47,7 @@ impl FeePriority {
         match s {
             "1" => Self::Low,
             "3" => Self::High,
-            _   => Self::Normal,
+            _ => Self::Normal,
         }
     }
 }

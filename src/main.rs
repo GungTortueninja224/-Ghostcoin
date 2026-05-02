@@ -1,47 +1,49 @@
+#![allow(dead_code)]
+
+mod anti_analysis;
+mod atomic_swap;
 mod block;
 mod blockchain;
-mod stealth;
-mod confidential;
-mod ring_signature;
-mod zkproof;
-mod network;
-mod mempool;
-mod consensus;
-mod wallet;
-mod dandelion;
+mod chain_state;
 mod cli;
-mod node;
+mod confidential;
 mod config;
+mod consensus;
+mod dandelion;
+mod explorer;
+mod fees;
+mod governance;
+mod logger;
+mod masternode;
+mod mempool;
+mod mimblewimble;
+mod miner;
+mod network;
+mod node;
+mod portfolio;
+mod quantum;
+mod ring_signature;
+mod seed;
+mod server_mode;
+mod staking;
+mod stealth;
 mod storage;
 mod sync;
-mod miner;
-mod viewkey;
-mod atomic_swap;
-mod anti_analysis;
-mod fees;
-mod explorer;
-mod chain_state;
-mod tx_store;
-mod seed;
-mod logger;
 mod tests;
-mod quantum;
-mod mimblewimble;
 mod tor_network;
-mod staking;
-mod governance;
-mod masternode;
-mod portfolio;
-mod server_mode;
+mod tx_store;
+mod viewkey;
+mod wallet;
 mod web_server;
+mod zkproof;
 
-use tokio::time::{sleep, Duration};
-use node::{NodeState, NodeMessage, run_node, send_to_node};
 use config::{print_logo, print_tokenomics, GhostCoinConfig};
-use sync::SharedChain;
-use storage::{save_wallet, load_wallet, wallet_exists};
-use std::io::{self, Write};
+use node::{run_node, send_to_node, NodeMessage, NodeState};
 use std::env;
+use std::io::{self, Write};
+use storage::{load_wallet, save_wallet, wallet_exists};
+use sync::SharedChain;
+use tokio::time::{sleep, Duration};
 
 fn read_input(prompt: &str) -> String {
     print!("{}", prompt);
@@ -52,8 +54,14 @@ fn read_input(prompt: &str) -> String {
 }
 
 fn get_wallet_path(address: &str) -> String {
-    format!("wallet_{}.ghst",
-        &address.chars().filter(|c| c.is_alphanumeric()).take(20).collect::<String>())
+    format!(
+        "wallet_{}.ghst",
+        &address
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(20)
+            .collect::<String>()
+    )
 }
 
 #[tokio::main]
@@ -105,24 +113,32 @@ async fn main() {
                 return;
             }
 
-            let w          = wallet::Wallet::new_mainnet();
-            wallet_addr    = w.address.clone();
-            wallet_path    = get_wallet_path(&wallet_addr);
-            password_used  = pwd1.clone();
+            let w = wallet::Wallet::new_mainnet();
+            wallet_addr = w.address.clone();
+            wallet_path = get_wallet_path(&wallet_addr);
+            password_used = pwd1.clone();
             wallet_balance = 0u64;
 
             save_wallet(
                 &wallet_addr,
                 w.keypair.scan_private.as_bytes(),
                 w.keypair.spend_private.as_bytes(),
-                0, &password_used, &wallet_path,
+                0,
+                &password_used,
+                &wallet_path,
             );
 
             println!("\n╔══════════════════════════════════════════════════════════╗");
             println!("║           ✅ WALLET CRÉÉ AVEC SUCCÈS                    ║");
             println!("╠══════════════════════════════════════════════════════════╣");
-            println!("║ Adresse : {:<48} ║", &wallet_addr[..wallet_addr.len().min(48)]);
-            println!("║ Fichier : {:<48} ║", &wallet_path[..wallet_path.len().min(48)]);
+            println!(
+                "║ Adresse : {:<48} ║",
+                &wallet_addr[..wallet_addr.len().min(48)]
+            );
+            println!(
+                "║ Fichier : {:<48} ║",
+                &wallet_path[..wallet_path.len().min(48)]
+            );
             println!("╠══════════════════════════════════════════════════════════╣");
             println!("║ ⚠️  Garde ton fichier .ghst et ta clé privée en sécurité ║");
             println!("╚══════════════════════════════════════════════════════════╝");
@@ -139,7 +155,7 @@ async fn main() {
                     let addr = read_input("Adresse (PC1-...) : ");
                     get_wallet_path(&addr)
                 }
-                _ => read_input("Nom du fichier (.ghst) : ")
+                _ => read_input("Nom du fichier (.ghst) : "),
             };
 
             if !wallet_exists(&path_to_load) {
@@ -151,12 +167,15 @@ async fn main() {
 
             match load_wallet(&path_to_load, &pwd) {
                 Some(w) => {
-                    wallet_addr    = w.address.clone();
-                    wallet_path    = path_to_load;
-                    password_used  = pwd;
+                    wallet_addr = w.address.clone();
+                    wallet_path = path_to_load;
+                    password_used = pwd;
                     wallet_balance = w.balance;
                     println!("✅ Wallet chargé !");
-                    println!("   Adresse : {}...", &wallet_addr[..20.min(wallet_addr.len())]);
+                    println!(
+                        "   Adresse : {}...",
+                        &wallet_addr[..20.min(wallet_addr.len())]
+                    );
                     println!("   Solde   : {} GHST", wallet_balance);
                 }
                 None => {
@@ -166,7 +185,10 @@ async fn main() {
             }
         }
 
-        _ => { println!("❌ Choix invalide"); return; }
+        _ => {
+            println!("❌ Choix invalide");
+            return;
+        }
     }
 
     // ── NOEUDS P2P ───────────────────────────────
@@ -196,21 +218,25 @@ async fn main() {
 
     sleep(Duration::from_millis(200)).await;
 
-    send_to_node("127.0.0.1:8002",
-        &NodeMessage::Hello { from_port: 8001 }).await;
-    send_to_node("127.0.0.1:8003",
-        &NodeMessage::Hello { from_port: 8001 }).await;
+    send_to_node("127.0.0.1:8002", &NodeMessage::Hello { from_port: 8001 }).await;
+    send_to_node("127.0.0.1:8003", &NodeMessage::Hello { from_port: 8001 }).await;
 
     sleep(Duration::from_millis(100)).await;
 
     println!("\n📊 Réseau {} :", config.name);
     for port in [8001u16, 8002, 8003] {
         let addr = format!("127.0.0.1:{}", port);
-        if let Some(NodeMessage::Status { port, peers, mempool, blocks }) =
-            send_to_node(&addr, &NodeMessage::GetStatus).await
+        if let Some(NodeMessage::Status {
+            port,
+            peers,
+            mempool,
+            blocks,
+        }) = send_to_node(&addr, &NodeMessage::GetStatus).await
         {
-            println!("   🟢 Noeud {} | Pairs: {} | Mempool: {} | Blocs: {}",
-                port, peers, mempool, blocks);
+            println!(
+                "   🟢 Noeud {} | Pairs: {} | Mempool: {} | Blocs: {}",
+                port, peers, mempool, blocks
+            );
         }
     }
 

@@ -1,16 +1,16 @@
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use serde::{Serialize, Deserialize};
+use tokio::net::{TcpListener, TcpStream};
 
 // ==========================================
 // ÉTAT PARTAGÉ DU NOEUD
 // ==========================================
 #[derive(Clone)]
 pub struct NodeState {
-    pub port:        u16,
-    pub peers:       Arc<Mutex<Vec<String>>>,
-    pub mempool:     Arc<Mutex<Vec<String>>>,
+    pub port: u16,
+    pub peers: Arc<Mutex<Vec<String>>>,
+    pub mempool: Arc<Mutex<Vec<String>>>,
     pub block_count: Arc<Mutex<u32>>,
 }
 
@@ -18,8 +18,8 @@ impl NodeState {
     pub fn new(port: u16) -> Self {
         Self {
             port,
-            peers:       Arc::new(Mutex::new(vec![])),
-            mempool:     Arc::new(Mutex::new(vec![])),
+            peers: Arc::new(Mutex::new(vec![])),
+            mempool: Arc::new(Mutex::new(vec![])),
             block_count: Arc::new(Mutex::new(0)),
         }
     }
@@ -61,11 +61,23 @@ impl NodeState {
 // ==========================================
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NodeMessage {
-    Hello      { from_port: u16 },
-    NewTx      { tx_data: String },
-    NewBlock   { block_index: u32, hash: String },
+    Hello {
+        from_port: u16,
+    },
+    NewTx {
+        tx_data: String,
+    },
+    NewBlock {
+        block_index: u32,
+        hash: String,
+    },
     GetStatus,
-    Status     { port: u16, peers: usize, mempool: usize, blocks: u32 },
+    Status {
+        port: u16,
+        peers: usize,
+        mempool: usize,
+        blocks: u32,
+    },
     Ping,
     Pong,
 }
@@ -75,7 +87,8 @@ pub enum NodeMessage {
 // ==========================================
 pub async fn run_node(state: NodeState) {
     let addr = format!("127.0.0.1:{}", state.port);
-    let listener = TcpListener::bind(&addr).await
+    let listener = TcpListener::bind(&addr)
+        .await
         .expect("Impossible de démarrer");
 
     println!("🟢 Noeud {} démarré sur {}", state.port, addr);
@@ -98,16 +111,13 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
             println!("📨 Message reçu de {}", peer_addr);
             let raw = String::from_utf8_lossy(&buf[..n]);
 
-            match serde_json::from_str::<NodeMessage>(&raw) {
-                Ok(msg) => {
-                    let response = process_message(msg, &state).await;
+            if let Ok(msg) = serde_json::from_str::<NodeMessage>(&raw) {
+                let response = process_message(msg, &state).await;
 
-                    if let Some(resp) = response {
-                        let json = serde_json::to_string(&resp).unwrap();
-                        let _ = socket.write_all(json.as_bytes()).await;
-                    }
+                if let Some(resp) = response {
+                    let json = serde_json::to_string(&resp).unwrap();
+                    let _ = socket.write_all(json.as_bytes()).await;
                 }
-                Err(_) => {}
             }
         }
         _ => {}
@@ -125,26 +135,31 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
 
         NodeMessage::NewTx { tx_data } => {
             state.add_to_mempool(&tx_data);
-            println!("💸 Noeud {} : TX reçue — mempool: {}",
-                state.port, state.mempool_size());
+            println!(
+                "💸 Noeud {} : TX reçue — mempool: {}",
+                state.port,
+                state.mempool_size()
+            );
             None
         }
 
         NodeMessage::NewBlock { block_index, hash } => {
             state.increment_blocks();
-            println!("📦 Noeud {} : Bloc {} reçu — {}...",
-                state.port, block_index, &hash[..8]);
+            println!(
+                "📦 Noeud {} : Bloc {} reçu — {}...",
+                state.port,
+                block_index,
+                &hash[..8]
+            );
             None
         }
 
-        NodeMessage::GetStatus => {
-            Some(NodeMessage::Status {
-                port:    state.port,
-                peers:   state.peer_count(),
-                mempool: state.mempool_size(),
-                blocks:  state.block_count(),
-            })
-        }
+        NodeMessage::GetStatus => Some(NodeMessage::Status {
+            port: state.port,
+            peers: state.peer_count(),
+            mempool: state.mempool_size(),
+            blocks: state.block_count(),
+        }),
 
         NodeMessage::Ping => Some(NodeMessage::Pong),
 

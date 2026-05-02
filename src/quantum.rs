@@ -1,7 +1,7 @@
-use sha2::{Sha256, Digest};
-use serde::{Serialize, Deserialize};
 use rand::rngs::OsRng;
 use rand::RngCore;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 // ==========================================
 // PROTECTION QUANTIQUE — CRYSTALS-DILITHIUM
@@ -9,9 +9,9 @@ use rand::RngCore;
 // ==========================================
 
 // Taille des clés post-quantiques
-const PQ_PUBLIC_KEY_SIZE:  usize = 1312;
+const PQ_PUBLIC_KEY_SIZE: usize = 1312;
 const PQ_PRIVATE_KEY_SIZE: usize = 2528;
-const PQ_SIGNATURE_SIZE:   usize = 2420;
+const PQ_SIGNATURE_SIZE: usize = 2420;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PQPublicKey {
@@ -21,13 +21,13 @@ pub struct PQPublicKey {
 
 #[derive(Clone, Debug)]
 pub struct PQPrivateKey {
-    pub bytes:     Vec<u8>,
+    pub bytes: Vec<u8>,
     pub algorithm: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PQSignature {
-    pub bytes:     Vec<u8>,
+    pub bytes: Vec<u8>,
     pub algorithm: String,
     pub message_hash: String,
 }
@@ -37,7 +37,7 @@ pub struct PQSignature {
 // ==========================================
 #[derive(Clone, Debug)]
 pub struct PQKeypair {
-    pub public_key:  PQPublicKey,
+    pub public_key: PQPublicKey,
     pub private_key: PQPrivateKey,
 }
 
@@ -55,11 +55,11 @@ impl PQKeypair {
 
         Self {
             public_key: PQPublicKey {
-                bytes:     public_bytes,
+                bytes: public_bytes,
                 algorithm: "CRYSTALS-Dilithium3".to_string(),
             },
             private_key: PQPrivateKey {
-                bytes:     private_bytes,
+                bytes: private_bytes,
                 algorithm: "CRYSTALS-Dilithium3".to_string(),
             },
         }
@@ -73,7 +73,7 @@ impl PQKeypair {
         // Multiple rounds de hashing pour simuler la dérivation
         for i in 0..41 {
             hasher.update(private_bytes);
-            hasher.update(&[i as u8]);
+            hasher.update([i as u8]);
             let round = hasher.finalize_reset();
             public.extend_from_slice(&round);
         }
@@ -102,18 +102,14 @@ impl PQKeypair {
         }
 
         PQSignature {
-            bytes:        sig_bytes,
-            algorithm:    "CRYSTALS-Dilithium3".to_string(),
+            bytes: sig_bytes,
+            algorithm: "CRYSTALS-Dilithium3".to_string(),
             message_hash: hex::encode(msg_hash),
         }
     }
 
     // Vérifie une signature post-quantique
-    pub fn verify(
-        public_key: &PQPublicKey,
-        message:    &[u8],
-        signature:  &PQSignature,
-    ) -> bool {
+    pub fn verify(public_key: &PQPublicKey, message: &[u8], signature: &PQSignature) -> bool {
         // Vérifie le hash du message
         let mut hasher = Sha256::new();
         hasher.update(message);
@@ -147,15 +143,16 @@ pub fn pq_address(public_key: &PQPublicKey) -> String {
     let round1 = hasher.finalize();
 
     let mut hasher2 = Sha256::new();
-    hasher2.update(&round1);
+    hasher2.update(round1);
     let round2 = hasher2.finalize();
 
     // Checksum
     let mut hasher3 = Sha256::new();
-    hasher3.update(&round2);
+    hasher3.update(round2);
     let checksum = hasher3.finalize();
 
-    format!("GHST-PQ-{}-{}",
+    format!(
+        "GHST-PQ-{}-{}",
         hex::encode(&round2[..16]),
         hex::encode(&checksum[..4]).to_uppercase(),
     )
@@ -166,9 +163,9 @@ pub fn pq_address(public_key: &PQPublicKey) -> String {
 // ==========================================
 #[derive(Clone, Debug)]
 pub struct PQWallet {
-    pub keypair:    PQKeypair,
-    pub address:    String,
-    pub algorithm:  String,
+    pub keypair: PQKeypair,
+    pub address: String,
+    pub algorithm: String,
 }
 
 impl PQWallet {
@@ -188,7 +185,10 @@ impl PQWallet {
         println!("║        🛡️  GHOSTCOIN QUANTUM-SAFE WALLET                ║");
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║ Algorithme : {:<44} ║", self.algorithm);
-        println!("║ Adresse    : {:<44} ║", &self.address[..self.address.len().min(44)]);
+        println!(
+            "║ Adresse    : {:<44} ║",
+            &self.address[..self.address.len().min(44)]
+        );
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║  ✅ Résistant aux ordinateurs quantiques                ║");
         println!("║  ✅ CRYSTALS-Dilithium (standard NIST 2024)             ║");
@@ -208,10 +208,6 @@ impl PQWallet {
 // ==========================================
 // VÉRIFICATEUR QUANTUM
 // ==========================================
-pub fn verify_quantum_tx(
-    public_key: &PQPublicKey,
-    tx_data:    &str,
-    signature:  &PQSignature,
-) -> bool {
+pub fn verify_quantum_tx(public_key: &PQPublicKey, tx_data: &str, signature: &PQSignature) -> bool {
     PQKeypair::verify(public_key, tx_data.as_bytes(), signature)
 }

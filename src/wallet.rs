@@ -1,5 +1,5 @@
 use curve25519_dalek::ristretto::RistrettoPoint;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 use crate::stealth::RecipientKeypair;
 
@@ -36,7 +36,7 @@ fn derive_address(spend_public: &RistrettoPoint, network: &Network) -> String {
 
     let round2 = {
         let mut h = Sha256::new();
-        h.update(&round1);
+        h.update(round1);
         h.finalize()
     };
 
@@ -66,8 +66,8 @@ pub fn validate_address(address: &str) -> bool {
         return false;
     }
 
-    let prefix   = parts[0];
-    let payload  = parts[1];
+    let prefix = parts[0];
+    let payload = parts[1];
     let checksum = parts[2];
 
     // Vérifie le prefix
@@ -130,8 +130,14 @@ impl Wallet {
         println!("║               🔒 PRIVACY CHAIN WALLET                   ║");
         println!("╠══════════════════════════════════════════════════════════╣");
         println!("║ Réseau  : {:<48} ║", self.network);
-        println!("║ Adresse : {:<48} ║", &self.address[..self.address.len().min(48)]);
-        println!("║          {:<48} ║", &self.address[self.address.len().min(48)..]);
+        println!(
+            "║ Adresse : {:<48} ║",
+            &self.address[..self.address.len().min(48)]
+        );
+        println!(
+            "║          {:<48} ║",
+            &self.address[self.address.len().min(48)..]
+        );
         println!("║ Balance : {:<48} ║", format!("{} coins", self.balance));
         println!("╚══════════════════════════════════════════════════════════╝");
     }
@@ -141,7 +147,11 @@ impl Wallet {
         println!("\n📬 Détails de l'adresse :");
         println!("   Adresse complète : {}", self.address);
         println!("   ├── Prefix       : {} ({})", parts[0], self.network);
-        println!("   ├── Payload      : {}...{}", &parts[1][..8], &parts[1][56..]);
+        println!(
+            "   ├── Payload      : {}...{}",
+            &parts[1][..8],
+            &parts[1][56..]
+        );
         println!("   └── Checksum     : {} ✅", parts[2]);
         println!("\n   Valide : {}", validate_address(&self.address));
     }
