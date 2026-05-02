@@ -45,6 +45,9 @@ use storage::{load_wallet, save_wallet, wallet_exists};
 use sync::SharedChain;
 use tokio::time::{sleep, Duration};
 
+const DEFAULT_SEED_NODE: &str = "shuttle.proxy.rlwy.net:48191";
+const DEFAULT_STATUS_NODE: &str = "127.0.0.1:8001";
+
 fn read_input(prompt: &str) -> String {
     print!("{}", prompt);
     io::stdout().flush().unwrap();
@@ -64,8 +67,91 @@ fn get_wallet_path(address: &str) -> String {
     )
 }
 
+fn print_cli_help(binary_name: &str) {
+    println!("Usage:");
+    println!("  {}                  # Lance le mode wallet interactif", binary_name);
+    println!(
+        "  {} connect [ADDR]   # Teste la connectivite d'un noeud (Ping/Pong)",
+        binary_name
+    );
+    println!(
+        "  {} status [ADDR]    # Recupere le statut d'un noeud",
+        binary_name
+    );
+    println!("  {} help             # Affiche cette aide", binary_name);
+    println!();
+    println!("Par defaut:");
+    println!("  connect -> {}", DEFAULT_SEED_NODE);
+    println!("  status  -> {}", DEFAULT_STATUS_NODE);
+}
+
+async fn run_cli_command(args: &[String]) -> bool {
+    if args.len() <= 1 {
+        return false;
+    }
+
+    let binary_name = args.first().map(String::as_str).unwrap_or("ghostcoin");
+    let command = args[1].as_str();
+
+    match command {
+        "help" | "--help" | "-h" => {
+            print_cli_help(binary_name);
+            true
+        }
+        "connect" => {
+            let addr = args
+                .get(2)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_SEED_NODE);
+
+            println!("Test de connexion vers {}...", addr);
+            match send_to_node(addr, &NodeMessage::Ping).await {
+                Some(NodeMessage::Pong) => println!("Connexion OK (Pong recu)."),
+                Some(other) => println!("Reponse inattendue: {:?}", other),
+                None => {}
+            }
+            true
+        }
+        "status" => {
+            let addr = args
+                .get(2)
+                .map(String::as_str)
+                .unwrap_or(DEFAULT_STATUS_NODE);
+
+            println!("Demande de statut a {}...", addr);
+            match send_to_node(addr, &NodeMessage::GetStatus).await {
+                Some(NodeMessage::Status {
+                    port,
+                    peers,
+                    mempool,
+                    blocks,
+                }) => {
+                    println!("Statut du noeud:");
+                    println!("  Port    : {}", port);
+                    println!("  Peers   : {}", peers);
+                    println!("  Mempool : {}", mempool);
+                    println!("  Blocks  : {}", blocks);
+                }
+                Some(other) => println!("Reponse inattendue: {:?}", other),
+                None => {}
+            }
+            true
+        }
+        _ => {
+            println!("Commande inconnue: {}", command);
+            print_cli_help(binary_name);
+            true
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = env::args().collect();
+    if run_cli_command(&args).await {
+        return;
+    }
+
     // ── MODE SERVEUR (Railway/VPS) ───────────────
     // Si la variable d'environnement GHOSTCOIN_SERVER est définie
     // → tourne en mode noeud sans interface CLI
@@ -204,9 +290,9 @@ async fn main() {
     node2.add_peer("127.0.0.1:8003");
     node3.add_peer("127.0.0.1:8001");
     node3.add_peer("127.0.0.1:8002");
-    node1.add_peer("shuttle.proxy.rlwy.net:48191");
-    node2.add_peer("shuttle.proxy.rlwy.net:48191");
-    node3.add_peer("shuttle.proxy.rlwy.net:48191");
+    node1.add_peer(DEFAULT_SEED_NODE);
+    node2.add_peer(DEFAULT_SEED_NODE);
+    node3.add_peer(DEFAULT_SEED_NODE);
 
     let n1 = node1.clone();
     let n2 = node2.clone();
