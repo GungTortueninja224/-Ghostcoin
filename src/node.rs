@@ -100,7 +100,12 @@ pub enum NodeMessage {
 }
 
 pub async fn run_node(state: NodeState) {
-    let addr = format!("127.0.0.1:{}", state.port);
+    let bind_host = if std::env::var("GHOSTCOIN_SERVER").is_ok() {
+        "0.0.0.0"
+    } else {
+        "127.0.0.1"
+    };
+    let addr = format!("{}:{}", bind_host, state.port);
     let listener = TcpListener::bind(&addr)
         .await
         .expect("Impossible de démarrer");

@@ -685,20 +685,23 @@ async fn api_mempool() -> Json<Value> {
     }))
 }
 
-pub async fn start_web_server() {
+pub async fn start_web_server_on_port(port: u16) {
     let app = Router::new()
         .route("/",            get(home))
         .route("/api/stats",   get(api_stats))
         .route("/api/mempool", get(api_mempool));
-
-    let port = std::env::var("PORT")
-        .unwrap_or_else(|_| "8001".to_string())
-        .parse::<u16>()
-        .unwrap_or(8001);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("🌐 Web server démarré sur port {}", port);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
+}
+
+pub async fn start_web_server() {
+    let port = std::env::var("PORT")
+        .unwrap_or_else(|_| "8001".to_string())
+        .parse::<u16>()
+        .unwrap_or(8001);
+    start_web_server_on_port(port).await;
 }
