@@ -664,7 +664,7 @@ async fn home() -> Html<String> {
   <div class="shell">
     <div class="topbar">
       <div class="brand">
-        <div class="brand-mark">G</div>
+        <div class="brand-mark">&#128123;</div>
         <div>
           <div class="brand-title">GhostCoin <span class="live-pill">Live</span></div>
           <div class="brand-sub">Public GHST explorer on Railway</div>
@@ -1146,7 +1146,6 @@ async fn home() -> Html<String> {
     fetchPriceHistory();
     initSupplyChart();
     setInterval(fetchPrices, 60000);
-    setTimeout(() => location.reload(), 30000);
   </script>
 </body>
 </html>"##,
