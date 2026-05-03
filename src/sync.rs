@@ -233,6 +233,55 @@ impl ChainSync {
         }
     }
 
+    pub async fn push_missing_blocks_to_peer(&self, peer: &str) -> usize {
+        let Some(NodeMessage::ChainTip { last_index, .. }) =
+            send_to_node(peer, &NodeMessage::GetChainTip).await
+        else {
+            return 0;
+        };
+
+        let local_tip = self.chain.last_index();
+        if last_index >= local_tip {
+            return 0;
+        }
+
+        let mut from_index = last_index;
+        let mut total_sent = 0usize;
+
+        loop {
+            let blocks = self.chain.get_blocks_since(from_index, SYNC_CHUNK_MAX);
+            if blocks.is_empty() {
+                break;
+            }
+
+            for block in blocks {
+                from_index = block.index;
+                send_to_node_fire_and_forget(
+                    peer,
+                    &NodeMessage::NewBlockFull {
+                        block,
+                    },
+                )
+                .await;
+                total_sent = total_sent.saturating_add(1);
+            }
+
+            if from_index >= local_tip {
+                break;
+            }
+        }
+
+        total_sent
+    }
+
+    pub async fn push_missing_blocks_to_peers(&self) -> usize {
+        let mut total_sent = 0usize;
+        for peer in &self.peers {
+            total_sent = total_sent.saturating_add(self.push_missing_blocks_to_peer(peer).await);
+        }
+        total_sent
+    }
+
     pub async fn check_peers(&self) {
         println!("\n🔍 Vérification des pairs :");
         for peer in &self.peers {

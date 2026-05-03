@@ -329,6 +329,14 @@ async fn main() {
         println!("Sync P2P : aucun nouveau bloc importe");
     }
 
+    let pushed_blocks = bootstrap_sync.push_missing_blocks_to_peer(DEFAULT_SEED_NODE).await;
+    if pushed_blocks > 0 {
+        println!(
+            "Push P2P vers le seed : {} bloc(s) envoye(s) pour rattrapage",
+            pushed_blocks
+        );
+    }
+
     for port in [8001u16, 8002, 8003] {
         let addr = format!("127.0.0.1:{}", port);
         if let Some(NodeMessage::Status {

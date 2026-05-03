@@ -498,7 +498,17 @@ impl Cli {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(chain_sync.broadcast_block(&block))
         });
+        let pushed_blocks = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(chain_sync.push_missing_blocks_to_peer("shuttle.proxy.rlwy.net:48191"))
+        });
         println!("🌐 Bloc diffusé au réseau P2P");
+        if pushed_blocks > 0 {
+            println!(
+                "🔄 Rattrapage seed Railway : {} bloc(s) renvoyé(s)",
+                pushed_blocks
+            );
+        }
 
         if reward > 0 {
             let new_state = ChainState::load();
