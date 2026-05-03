@@ -306,8 +306,24 @@ async fn main() {
 
     sleep(Duration::from_millis(200)).await;
 
-    send_to_node("127.0.0.1:8002", &NodeMessage::Hello { from_port: 8001 }).await;
-    send_to_node("127.0.0.1:8003", &NodeMessage::Hello { from_port: 8001 }).await;
+    send_to_node(
+        "127.0.0.1:8002",
+        &NodeMessage::Hello {
+            from_port: 8001,
+            version: 1,
+            height: shared_chain.last_index(),
+        },
+    )
+    .await;
+    send_to_node(
+        "127.0.0.1:8003",
+        &NodeMessage::Hello {
+            from_port: 8001,
+            version: 1,
+            height: shared_chain.last_index(),
+        },
+    )
+    .await;
 
     sleep(Duration::from_millis(100)).await;
 

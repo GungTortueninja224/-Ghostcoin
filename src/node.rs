@@ -1,9 +1,11 @@
 use crate::miner::MinedBlock;
-use crate::sync::SharedChain;
+use crate::sync::{ChainSync, SharedChain};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{timeout, Duration};
 
 #[derive(Clone)]
 pub struct NodeState {
@@ -28,9 +30,28 @@ impl NodeState {
 
     pub fn add_peer(&self, peer: &str) {
         let mut peers = self.peers.lock().unwrap();
-        if !peers.contains(&peer.to_string()) {
+        if !peers.contains(&peer.to_string()) && peers.len() < 50 {
             peers.push(peer.to_string());
         }
+    }
+
+    pub fn remove_peer(&self, peer: &str) {
+        let mut peers = self.peers.lock().unwrap();
+        peers.retain(|p| p != peer);
+    }
+
+    pub fn get_peers(&self) -> Vec<String> {
+        self.peers
+            .lock()
+            .unwrap()
+            .iter()
+            .take(20)
+            .cloned()
+            .collect()
+    }
+
+    pub fn knows_peer(&self, peer: &str) -> bool {
+        self.peers.lock().unwrap().iter().any(|p| p == peer)
     }
 
     pub fn add_to_mempool(&self, tx: &str) {
@@ -63,7 +84,13 @@ impl NodeState {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum NodeMessage {
-    Hello { from_port: u16 },
+    Hello {
+        from_port: u16,
+        version: u32,
+        height: u32,
+    },
+    PeerList { peers: Vec<String> },
+    GetPeers,
     NewTx { tx_data: String },
     NewBlock { block_index: u32, hash: String },
     NewBlockFull { block: MinedBlock },
@@ -83,6 +110,59 @@ pub enum NodeMessage {
     Blocks { blocks: Vec<MinedBlock> },
     Ping,
     Pong,
+}
+
+fn canonical_peer_addr(peer_addr: &str, announced_port: u16) -> Option<String> {
+    peer_addr.parse::<SocketAddr>().ok().map(|addr| {
+        let canonical = SocketAddr::new(addr.ip(), announced_port);
+        canonical.to_string()
+    })
+}
+
+async fn read_message(socket: &mut TcpStream) -> Result<NodeMessage, String> {
+    let mut len_buf = [0u8; 4];
+    socket
+        .read_exact(&mut len_buf)
+        .await
+        .map_err(|e| format!("failed to read length prefix: {}", e))?;
+
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len == 0 {
+        return Err("empty message".to_string());
+    }
+    if len > 10_000_000 {
+        return Err(format!("message too large: {} bytes", len));
+    }
+
+    let mut buf = vec![0u8; len];
+    socket
+        .read_exact(&mut buf)
+        .await
+        .map_err(|e| format!("failed to read message body: {}", e))?;
+
+    serde_json::from_slice::<NodeMessage>(&buf)
+        .map_err(|e| format!("failed to deserialize message: {}", e))
+}
+
+async fn write_message(socket: &mut TcpStream, msg: &NodeMessage) -> Result<(), String> {
+    let data =
+        serde_json::to_vec(msg).map_err(|e| format!("failed to serialize message: {}", e))?;
+    let len = (data.len() as u32).to_be_bytes();
+
+    socket
+        .write_all(&len)
+        .await
+        .map_err(|e| format!("failed to write length prefix: {}", e))?;
+    socket
+        .write_all(&data)
+        .await
+        .map_err(|e| format!("failed to write message body: {}", e))?;
+    socket
+        .flush()
+        .await
+        .map_err(|e| format!("failed to flush socket: {}", e))?;
+
+    Ok(())
 }
 
 pub async fn run_node(state: NodeState) {
@@ -106,38 +186,70 @@ pub async fn run_node(state: NodeState) {
 }
 
 async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState) {
-    // Record the actual remote endpoint instead of assuming localhost.
     state.add_peer(&peer_addr);
 
-    let mut buf = vec![0u8; 64 * 1024];
-    match tokio::time::timeout(tokio::time::Duration::from_secs(5), socket.read(&mut buf)).await {
-        Ok(Ok(n)) if n > 0 => {
-            println!("Message received from {}", peer_addr);
-            match serde_json::from_slice::<NodeMessage>(&buf[..n]) {
-                Ok(msg) => {
-                    let response = process_message(msg, &state).await;
-                    if let Some(resp) = response {
-                        let json = serde_json::to_string(&resp).unwrap();
-                        let _ = socket.write_all(json.as_bytes()).await;
-                        let _ = socket.flush().await;
+    loop {
+        match timeout(Duration::from_secs(8), read_message(&mut socket)).await {
+            Ok(Ok(msg)) => {
+                println!("Message received from {}", peer_addr);
+                let response = process_message(msg, &state, &peer_addr).await;
+                if let Some(resp) = response {
+                    if let Err(e) = write_message(&mut socket, &resp).await {
+                        println!("Write error to {}: {}", peer_addr, e);
+                        break;
                     }
                 }
-                Err(e) => {
-                    println!("Invalid message from {}: {}", peer_addr, e);
+            }
+            Ok(Err(e)) => {
+                if !e.contains("early eof") {
+                    println!("Read error from {}: {}", peer_addr, e);
                 }
+                break;
+            }
+            Err(_) => {
+                println!("Timeout reading from {}", peer_addr);
+                break;
             }
         }
-        Ok(Ok(_)) => {}
-        Ok(Err(e)) => println!("Read error from {}: {}", peer_addr, e),
-        Err(_) => println!("Timeout reading from {}", peer_addr),
     }
 }
 
-async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMessage> {
+async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -> Option<NodeMessage> {
     match msg {
-        NodeMessage::Hello { from_port: _ } => {
+        NodeMessage::Hello {
+            from_port,
+            version: _,
+            height,
+        } => {
+            if let Some(canonical) = canonical_peer_addr(peer_addr, from_port) {
+                state.add_peer(&canonical);
+            }
             println!("Node {}: hello received", state.port);
-            Some(NodeMessage::Pong)
+
+            if height > state.chain.last_index() {
+                let sync = ChainSync::new_with_chain(state.chain.clone(), vec![peer_addr.to_string()]);
+                tokio::spawn(async move {
+                    let _ = sync.sync_from_peers().await;
+                });
+            }
+
+            Some(NodeMessage::PeerList {
+                peers: state.get_peers(),
+            })
+        }
+        NodeMessage::GetPeers => Some(NodeMessage::PeerList {
+            peers: state.get_peers(),
+        }),
+        NodeMessage::PeerList { peers } => {
+            for peer in peers {
+                if peer != peer_addr && !state.knows_peer(&peer) {
+                    let state_clone = state.clone();
+                    tokio::spawn(async move {
+                        connect_with_backoff(peer, state_clone).await;
+                    });
+                }
+            }
+            None
         }
         NodeMessage::NewTx { tx_data } => {
             state.add_to_mempool(&tx_data);
@@ -211,20 +323,67 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
     }
 }
 
+async fn connect_with_backoff(addr: String, state: NodeState) {
+    let mut delay = Duration::from_secs(2);
+    let max_delay = Duration::from_secs(120);
+    let max_attempts = 6;
+
+    for attempt in 1..=max_attempts {
+        let hello = NodeMessage::Hello {
+            from_port: state.port,
+            version: 1,
+            height: state.chain.last_index(),
+        };
+
+        match send_to_node(&addr, &hello).await {
+            Some(NodeMessage::PeerList { peers }) => {
+                println!("[peer] connected to {} after {} attempt(s)", addr, attempt);
+                state.add_peer(&addr);
+
+                for peer in peers {
+                    if peer != addr && !state.knows_peer(&peer) {
+                        state.add_peer(&peer);
+                    }
+                }
+
+                if let Some(NodeMessage::ChainTip { last_index, .. }) =
+                    send_to_node(&addr, &NodeMessage::GetChainTip).await
+                {
+                    if last_index > state.chain.last_index() {
+                        let sync = ChainSync::new_with_chain(state.chain.clone(), vec![addr.clone()]);
+                        let _ = sync.sync_from_peers().await;
+                    }
+                }
+                return;
+            }
+            Some(NodeMessage::Pong) => {
+                println!("[peer] connected to {} after {} attempt(s)", addr, attempt);
+                state.add_peer(&addr);
+                return;
+            }
+            _ => {
+                println!(
+                    "[peer {}] attempt {}/{} failed - retry in {:?}",
+                    addr, attempt, max_attempts, delay
+                );
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(max_delay);
+            }
+        }
+    }
+
+    println!("[peer {}] unreachable after {} attempts", addr, max_attempts);
+    state.remove_peer(&addr);
+}
+
 pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> {
     match TcpStream::connect(addr).await {
         Ok(mut stream) => {
-            let json = serde_json::to_string(msg).unwrap();
-            if stream.write_all(json.as_bytes()).await.is_err() {
+            if write_message(&mut stream, msg).await.is_err() {
                 return None;
             }
-            let _ = stream.flush().await;
-
-            let mut buf = vec![0u8; 64 * 1024];
-            match tokio::time::timeout(tokio::time::Duration::from_secs(8), stream.read(&mut buf))
-                .await
-            {
-                Ok(Ok(n)) if n > 0 => serde_json::from_slice::<NodeMessage>(&buf[..n]).ok(),
+            match timeout(Duration::from_secs(8), read_message(&mut stream)).await {
+                Ok(Ok(resp)) => Some(resp),
                 _ => None,
             }
         }
@@ -238,8 +397,7 @@ pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> 
 pub async fn send_to_node_fire_and_forget(addr: &str, msg: &NodeMessage) {
     match TcpStream::connect(addr).await {
         Ok(mut stream) => {
-            let json = serde_json::to_string(msg).unwrap();
-            let _ = stream.write_all(json.as_bytes()).await;
+            let _ = write_message(&mut stream, msg).await;
             let _ = stream.shutdown().await;
         }
         Err(_) => {

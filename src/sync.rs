@@ -1,10 +1,11 @@
 use crate::chain_state::ChainState;
 use crate::miner::MinedBlock;
 use crate::node::{send_to_node, send_to_node_fire_and_forget, NodeMessage};
-use chrono::Utc;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn blocks_file() -> String {
     if std::env::var("GHOSTCOIN_SERVER").is_ok() {
@@ -21,6 +22,7 @@ fn ensure_blocks_parent_dir(path: &str) {
         }
     }
 }
+
 const SYNC_CHUNK_SIZE: usize = 128;
 const SYNC_CHUNK_MAX: usize = 512;
 
@@ -32,7 +34,7 @@ pub struct SharedChain {
 impl SharedChain {
     pub fn new() -> Self {
         let blocks = Self::load_from_disk();
-        println!("📦 {} bloc(s) chargé(s) depuis le disque", blocks.len());
+        println!("Loaded {} block(s) from disk", blocks.len());
 
         Self {
             blocks: Arc::new(Mutex::new(blocks)),
@@ -46,6 +48,7 @@ impl SharedChain {
             Self::rebuild_chain_state(&[]);
             return vec![];
         }
+
         let json = fs::read_to_string(&path).unwrap_or_default();
         let blocks: Vec<MinedBlock> = serde_json::from_str(&json).unwrap_or_default();
         let normalized = Self::normalize_blocks(blocks);
@@ -94,43 +97,120 @@ impl SharedChain {
         let _ = fs::write(path, json);
     }
 
+    fn calculate_block_hash(block: &MinedBlock) -> String {
+        let input = format!(
+            "{}{}{}{}{}",
+            block.index, block.timestamp, block.data, block.previous_hash, block.nonce
+        );
+        let mut hasher = Sha256::new();
+        hasher.update(input.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+
+    fn meets_difficulty(hash: &str, difficulty: usize) -> bool {
+        hash.starts_with(&"0".repeat(difficulty.min(64)))
+    }
+
+    fn parse_coinbase_field(data: &str, field: &str) -> Option<u64> {
+        let prefix = format!("{}=", field);
+        data.split_whitespace()
+            .find_map(|part| part.strip_prefix(&prefix))
+            .and_then(|raw| raw.parse::<u64>().ok())
+    }
+
+    fn validate_block_candidate(
+        block: &MinedBlock,
+        chain: &[MinedBlock],
+        state: &ChainState,
+    ) -> Result<(), String> {
+        let expected_index = chain.last().map(|b| b.index.saturating_add(1)).unwrap_or(1);
+        if block.index != expected_index {
+            return Err(format!(
+                "non-contiguous index: expected {}, got {}",
+                expected_index, block.index
+            ));
+        }
+
+        let expected_prev_hash = chain
+            .last()
+            .map(|b| b.hash.as_str())
+            .unwrap_or("0");
+        if block.previous_hash != expected_prev_hash {
+            return Err(format!(
+                "invalid prev_hash: expected {}, got {}",
+                expected_prev_hash, block.previous_hash
+            ));
+        }
+
+        let computed_hash = Self::calculate_block_hash(block);
+        if computed_hash != block.hash {
+            return Err(format!(
+                "hash mismatch: computed {}, claimed {}",
+                computed_hash, block.hash
+            ));
+        }
+
+        if !Self::meets_difficulty(&block.hash, state.difficulty) {
+            return Err(format!("insufficient PoW for difficulty {}", state.difficulty));
+        }
+
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        if block.timestamp > now_ms.saturating_add(120_000) {
+            return Err("timestamp too far in the future".to_string());
+        }
+
+        if let Some(last) = chain.last() {
+            if block.timestamp <= last.timestamp {
+                return Err("timestamp not strictly increasing".to_string());
+            }
+        }
+
+        let claimed_reward = Self::parse_coinbase_field(&block.data, "reward")
+            .ok_or_else(|| "missing reward field in coinbase data".to_string())?;
+        let expected_reward = state.current_reward();
+        if claimed_reward > expected_reward {
+            return Err(format!(
+                "reward {} exceeds expected max {}",
+                claimed_reward, expected_reward
+            ));
+        }
+
+        if let Some(claimed_height) = Self::parse_coinbase_field(&block.data, "height") {
+            if claimed_height != block.index as u64 {
+                return Err(format!(
+                    "coinbase height mismatch: claimed {}, block index {}",
+                    claimed_height, block.index
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn apply_block_to_state(state: &mut ChainState, block: &MinedBlock) {
+        let reward = state.current_reward();
+        let minted_this_block = reward.saturating_add(block.fees_collected);
+        state.block_height = state.block_height.saturating_add(1);
+        state.minted_supply = state
+            .minted_supply
+            .saturating_add(minted_this_block)
+            .min(crate::chain_state::MAX_SUPPLY);
+        state.last_block_hash = block.hash.clone();
+        state.last_block_time = (block.timestamp / 1000).min(i64::MAX as u128) as i64;
+        state.total_tx_count = state.total_tx_count.saturating_add(block.tx_count as u64);
+        state.total_fees = state.total_fees.saturating_add(block.fees_collected);
+    }
+
     fn rebuild_chain_state(blocks: &[MinedBlock]) {
         let current = ChainState::load();
         let mut rebuilt = ChainState::new();
         rebuilt.difficulty = current.difficulty;
-        let mut use_current_as_base = false;
-
-        if let Some(first) = blocks.first() {
-            if first.index > 1
-                && current.block_height.saturating_add(1) == first.index as u64
-                && current.last_block_hash == first.previous_hash
-            {
-                rebuilt.block_height = current.block_height;
-                rebuilt.minted_supply = current.minted_supply;
-                rebuilt.total_tx_count = current.total_tx_count;
-                rebuilt.total_fees = current.total_fees;
-                rebuilt.last_block_hash = current.last_block_hash.clone();
-                rebuilt.last_block_time = current.last_block_time;
-                use_current_as_base = true;
-            }
-        }
 
         for block in blocks {
-            if use_current_as_base && block.index <= rebuilt.block_height as u32 {
-                continue;
-            }
-            let reward = rebuilt.current_reward();
-            let minted_this_block = reward.saturating_add(block.fees_collected);
-
-            rebuilt.block_height = rebuilt.block_height.saturating_add(1);
-            rebuilt.minted_supply = rebuilt
-                .minted_supply
-                .saturating_add(minted_this_block)
-                .min(crate::chain_state::MAX_SUPPLY);
-            rebuilt.last_block_hash = block.hash.clone();
-            rebuilt.last_block_time = Utc::now().timestamp();
-            rebuilt.total_tx_count = rebuilt.total_tx_count.saturating_add(block.tx_count as u64);
-            rebuilt.total_fees = rebuilt.total_fees.saturating_add(block.fees_collected);
+            Self::apply_block_to_state(&mut rebuilt, block);
         }
 
         rebuilt.save();
@@ -138,32 +218,26 @@ impl SharedChain {
 
     pub fn add_block(&self, block: MinedBlock) {
         let mut chain = self.blocks.lock().unwrap();
+        let mut state = ChainState::load();
+
         if chain
             .iter()
             .any(|existing| existing.hash == block.hash || existing.index == block.index)
         {
             return;
         }
-        let expected_index = chain.last().map(|b| b.index.saturating_add(1)).unwrap_or(1);
-        let expected_prev_hash = chain
-            .last()
-            .map(|b| b.hash.clone())
-            .unwrap_or_else(|| "0".to_string());
-        if block.index != expected_index || block.previous_hash != expected_prev_hash {
-            println!(
-                "Rejected inconsistent local block: expected #{} after {}..., got #{} after {}...",
-                expected_index,
-                &expected_prev_hash[..12.min(expected_prev_hash.len())],
-                block.index,
-                &block.previous_hash[..12.min(block.previous_hash.len())]
-            );
+
+        if let Err(reason) = Self::validate_block_candidate(&block, &chain, &state) {
+            println!("Rejected inconsistent local block #{}: {}", block.index, reason);
             return;
         }
-        chain.push(block);
+
+        chain.push(block.clone());
         chain.sort_by_key(|b| b.index);
+        Self::apply_block_to_state(&mut state, &block);
         Self::save_to_disk(&chain);
-        Self::rebuild_chain_state(&chain);
-        println!("💾 Bloc sauvegardé sur disque");
+        state.save();
+        println!("Block saved to disk");
     }
 
     pub fn merge_blocks_from_network(&self, mut incoming: Vec<MinedBlock>) -> usize {
@@ -173,6 +247,7 @@ impl SharedChain {
 
         incoming.sort_by_key(|b| b.index);
         let mut chain = self.blocks.lock().unwrap();
+        let mut state = ChainState::load();
         let mut known_hashes: std::collections::HashSet<String> =
             chain.iter().map(|b| b.hash.clone()).collect();
         let mut added = 0usize;
@@ -185,35 +260,22 @@ impl SharedChain {
                 continue;
             }
 
-            let parent_known = if block.index == 1 {
-                block.previous_hash == "0" && chain.is_empty()
-            } else if let Some(parent) = chain
-                .iter()
-                .find(|existing| existing.hash == block.previous_hash)
-            {
-                parent.index.saturating_add(1) == block.index
-            } else if chain.is_empty() {
-                let state = ChainState::load();
-                state.block_height.saturating_add(1) == block.index as u64
-                    && state.last_block_hash == block.previous_hash
-            } else {
-                false
-            };
-
-            if !parent_known {
+            if let Err(reason) = Self::validate_block_candidate(&block, &chain, &state) {
+                println!("[sync] rejected block #{}: {}", block.index, reason);
                 continue;
             }
 
             known_hashes.insert(block.hash.clone());
-            chain.push(block);
+            chain.push(block.clone());
+            Self::apply_block_to_state(&mut state, &block);
             added = added.saturating_add(1);
         }
 
         if added > 0 {
             chain.sort_by_key(|b| b.index);
             Self::save_to_disk(&chain);
-            Self::rebuild_chain_state(&chain);
-            println!("🔄 Sync P2P: {} bloc(s) intégré(s)", added);
+            state.save();
+            println!("P2P sync integrated {} block(s)", added);
         }
 
         added
@@ -305,8 +367,6 @@ impl ChainSync {
             return 0;
         }
 
-        // Send the full ordered suffix in one payload so the receiver can
-        // integrate it sequentially after a restart.
         let blocks = self.chain.get_blocks_since(last_index, SYNC_CHUNK_MAX);
         let count = blocks.len();
         if count == 0 {
@@ -328,11 +388,11 @@ impl ChainSync {
     }
 
     pub async fn check_peers(&self) {
-        println!("\n🔍 Vérification des pairs :");
+        println!("\nVerification des pairs :");
         for peer in &self.peers {
             match send_to_node(peer, &NodeMessage::Ping).await {
-                Some(_) => println!("   🟢 {} — en ligne", peer),
-                None => println!("   🔴 {} — hors ligne", peer),
+                Some(_) => println!("   {} - online", peer),
+                None => println!("   {} - offline", peer),
             }
         }
     }
