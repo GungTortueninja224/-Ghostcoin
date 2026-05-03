@@ -18,5 +18,15 @@
     "nonce": 2011,
     "tx_count": 0,
     "fees_collected": 0
+  },
+  {
+    "index": 3,
+    "timestamp": 1777762399212,
+    "data": "coinbase:miner=PC1-324846b23bbc reward=65 fees=0 txs=0 height=3",
+    "previous_hash": "000013efec64bda4458f9659c7c51cb5e8731effb3d623e5a07cbcf5797b0cd1",
+    "hash": "0000d363a924c66ba441a496bb507dcede0ab0f481d3eb61d352c0a6fb7a50b5",
+    "nonce": 174119,
+    "tx_count": 0,
+    "fees_collected": 0
   }
 ]
