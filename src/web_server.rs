@@ -168,6 +168,19 @@ fn render_nav(active: &str) -> String {
 fn render_market_sidebar() -> String {
     r#"
       <aside class="panel hero-side">
+        <div class="visual-card">
+          <div class="coin-orb">
+            <div class="coin-core">&#128123;</div>
+          </div>
+          <div class="security-ribbon">END-TO-END ENCRYPTED</div>
+          <div class="feature-pills">
+            <span>Stealth</span>
+            <span>Ring Sig</span>
+            <span>zk-SNARK</span>
+            <span>Dandelion++</span>
+            <span>Quantum-Safe</span>
+          </div>
+        </div>
         <div class="section-kicker">Market snapshot</div>
         <div class="price-card">
           <div><strong>GHST</strong><span>Mainnet reference</span></div>
@@ -231,7 +244,9 @@ fn overview_panel(data: &ViewData) -> String {
           <h2>Market context</h2>
           <span>BTC and ETH for macro reference around GHST</span>
         </div>
-        <canvas id="priceChart" height="120"></canvas>
+        <div class="chart-shell">
+          <canvas id="priceChart" height="120"></canvas>
+        </div>
       </article>
 
       <article class="panel content-card narrow">
@@ -239,7 +254,9 @@ fn overview_panel(data: &ViewData) -> String {
           <h2>Supply distribution</h2>
           <span>{:.4}% mined</span>
         </div>
-        <canvas id="supplyChart" height="210"></canvas>
+        <div class="donut-shell">
+          <canvas id="supplyChart" height="210"></canvas>
+        </div>
         <div class="supply-meta">
           <div class="progress"><div></div></div>
           <div class="progress-legend">
@@ -412,20 +429,20 @@ fn mining_panel(data: &ViewData) -> String {
 }
 
 fn buy_panel() -> String {
-    r#"
+    r##"
       <article class="panel table-card">
         <div class="section-title">
           <h2>Buy GHST</h2>
           <span>Current acquisition flow for early network users</span>
         </div>
-        <table>
-          <tr><th>Method</th><th>Details</th></tr>
-          <tr><td>Mine locally</td><td>Run the CLI wallet, choose mining, and secure fresh GHST directly from the chain.</td></tr>
-          <tr><td>P2P transfer</td><td>Receive GHST from another wallet once wallet-to-wallet transfers are active in your session.</td></tr>
-          <tr><td>Exchange listing</td><td>Planned for a later phase. This section will switch from guide mode to live market routing once listings exist.</td></tr>
-        </table>
+        <div class="wallet-grid">
+          <a class="wallet-card" href="#"><strong>Windows</strong><span>GhostCoin CLI · v1.0 · ~24 MB</span></a>
+          <a class="wallet-card" href="#"><strong>macOS</strong><span>GhostCoin CLI · v1.0 · ~24 MB</span></a>
+          <a class="wallet-card" href="#"><strong>Linux</strong><span>GhostCoin CLI · v1.0 · ~24 MB</span></a>
+          <a class="wallet-card" href="https://github.com/GungTortueninja224/-Ghostcoin"><strong>View Source</strong><span>GitHub repository and code access</span></a>
+        </div>
       </article>
-"#
+"##
     .to_string()
 }
 
@@ -597,14 +614,18 @@ fn render_single_page(data: &ViewData) -> String {
       gap: 14px;
     }}
     .brand-mark {{
-      width: 48px;
-      height: 48px;
+      width: 56px;
+      height: 56px;
       display: grid;
       place-items: center;
-      border-radius: 16px;
-      border: 1px solid rgba(19,156,117,0.18);
-      background: linear-gradient(135deg, var(--accent-soft), #ffffff);
-      font-size: 1.5rem;
+      border-radius: 50%;
+      border: 1px solid rgba(19,156,117,0.22);
+      background: radial-gradient(circle at 30% 30%, #ffffff, #edf8f4 60%, #d6efe6 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 12px 24px rgba(19,156,117,0.14);
+      font-size: 1.1rem;
+      font-weight: 900;
+      letter-spacing: -0.08em;
+      color: #111;
     }}
     .brand-title {{
       font-size: 1.25rem;
@@ -726,6 +747,63 @@ fn render_single_page(data: &ViewData) -> String {
       font-size: 1rem;
       line-height: 1.7;
     }}
+    .visual-card {{
+      position: relative;
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(244,246,245,0.98));
+      border: 1px solid rgba(20,35,31,0.08);
+      overflow: hidden;
+    }}
+    .coin-orb {{
+      height: 220px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 35% 25%, rgba(255,255,255,0.92), rgba(255,255,255,0) 32%),
+        radial-gradient(circle at 68% 72%, rgba(17,17,17,0.16), rgba(17,17,17,0) 28%),
+        linear-gradient(135deg, #fcfcfb 0%, #ecefef 100%);
+      border-radius: 18px;
+    }}
+    .coin-core {{
+      width: 126px;
+      height: 126px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #ffffff, #dedede 58%, #8d8d8d 100%);
+      border: 8px solid #1e1e1e;
+      box-shadow: 0 18px 38px rgba(18,18,18,0.16);
+      font-size: 3rem;
+      filter: grayscale(1);
+    }}
+    .security-ribbon {{
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: rgba(17,17,17,0.92);
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }}
+    .feature-pills {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }}
+    .feature-pills span {{
+      padding: 8px 11px;
+      border-radius: 999px;
+      border: 1px solid rgba(20,35,31,0.08);
+      background: #fff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--ink);
+    }}
     .hero-side {{
       padding: 28px;
       display: grid;
@@ -815,6 +893,20 @@ fn render_single_page(data: &ViewData) -> String {
     .table-card {{
       padding: 24px;
       grid-column: 1 / -1;
+    }}
+    .chart-shell {{
+      position: relative;
+      height: 280px;
+      padding-top: 6px;
+    }}
+    .donut-shell {{
+      position: relative;
+      height: 250px;
+      max-width: 260px;
+      margin: 0 auto 8px;
+    }}
+    canvas {{
+      max-width: 100%;
     }}
     .wide {{ grid-column: span 8; }}
     .narrow {{ grid-column: span 4; }}
@@ -980,6 +1072,34 @@ fn render_single_page(data: &ViewData) -> String {
       color: var(--accent-deep);
       font-size: 0.9rem;
     }}
+    .wallet-grid {{
+      display: grid;
+      gap: 14px;
+    }}
+    .wallet-card {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.88);
+      border: 1px solid rgba(20,35,31,0.08);
+      transition: 160ms ease;
+    }}
+    .wallet-card:hover {{
+      transform: translateY(-1px);
+      border-color: rgba(19,156,117,0.22);
+      box-shadow: 0 14px 30px rgba(19,156,117,0.10);
+    }}
+    .wallet-card strong {{
+      display: block;
+      font-size: 1rem;
+    }}
+    .wallet-card span {{
+      color: var(--muted);
+      font-size: 0.86rem;
+    }}
     .footer {{
       display: flex;
       justify-content: space-between;
@@ -987,6 +1107,7 @@ fn render_single_page(data: &ViewData) -> String {
       gap: 16px;
       margin-top: 24px;
       padding: 18px 22px;
+      border-top: 1px solid rgba(20,35,31,0.08);
       color: var(--muted);
       font-size: 0.9rem;
     }}
@@ -1026,6 +1147,12 @@ fn render_single_page(data: &ViewData) -> String {
       .table-card {{
         padding: 20px;
       }}
+      .chart-shell {{
+        height: 220px;
+      }}
+      .donut-shell {{
+        height: 210px;
+      }}
       .footer {{
         flex-direction: column;
         align-items: flex-start;
@@ -1037,7 +1164,7 @@ fn render_single_page(data: &ViewData) -> String {
   <div class="shell">
     <div class="topbar">
       <div class="brand">
-        <div class="brand-mark">&#128123;</div>
+        <div class="brand-mark">GC</div>
         <div>
           <div class="brand-title">GhostCoin <span class="live-pill">Live</span></div>
           <div class="brand-sub">Public GHST explorer on Railway</div>
