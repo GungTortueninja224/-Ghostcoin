@@ -1,4 +1,5 @@
 use crate::miner::MinedBlock;
+use crate::mempool::{Mempool, MempoolTx};
 use crate::sync::{ChainSync, SharedChain};
 use crate::config;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,6 @@ use tokio::time::{timeout, Duration};
 pub struct NodeState {
     pub port: u16,
     pub peers: Arc<Mutex<Vec<String>>>,
-    pub mempool: Arc<Mutex<Vec<String>>>,
     pub block_count: Arc<Mutex<u32>>,
     pub chain: SharedChain,
 }
@@ -23,7 +23,6 @@ impl NodeState {
         Self {
             port,
             peers: Arc::new(Mutex::new(vec![])),
-            mempool: Arc::new(Mutex::new(vec![])),
             block_count: Arc::new(Mutex::new(initial_count)),
             chain,
         }
@@ -55,11 +54,9 @@ impl NodeState {
         self.peers.lock().unwrap().iter().any(|p| p == peer)
     }
 
-    pub fn add_to_mempool(&self, tx: &str) {
-        let mut mempool = self.mempool.lock().unwrap();
-        if !mempool.contains(&tx.to_string()) {
-            mempool.push(tx.to_string());
-        }
+    pub fn add_to_mempool(&self, tx: MempoolTx) -> bool {
+        let mut mempool = Mempool::load();
+        mempool.add(tx)
     }
 
     pub fn peer_count(&self) -> usize {
@@ -67,7 +64,7 @@ impl NodeState {
     }
 
     pub fn mempool_size(&self) -> usize {
-        self.mempool.lock().unwrap().len()
+        Mempool::load().pending_count()
     }
 
     pub fn block_count(&self) -> u32 {
@@ -92,7 +89,7 @@ pub enum NodeMessage {
     },
     PeerList { peers: Vec<String> },
     GetPeers,
-    NewTx { tx_data: String },
+    NewTx { tx: MempoolTx },
     NewBlock { block_index: u32, hash: String },
     NewBlockFull { block: MinedBlock },
     GetStatus,
@@ -187,8 +184,6 @@ pub async fn run_node(state: NodeState) {
 }
 
 async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState) {
-    state.add_peer(&peer_addr);
-
     loop {
         match timeout(Duration::from_secs(8), read_message(&mut socket)).await {
             Ok(Ok(msg)) => {
@@ -252,9 +247,29 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             }
             None
         }
-        NodeMessage::NewTx { tx_data } => {
-            state.add_to_mempool(&tx_data);
-            println!("Node {}: tx received (mempool {})", state.port, state.mempool_size());
+        NodeMessage::NewTx { tx } => {
+            let tx_id = tx.tx_id.clone();
+            let added = state.add_to_mempool(tx.clone());
+            println!(
+                "Node {}: tx {} {} (mempool {})",
+                state.port,
+                &tx_id[..16.min(tx_id.len())],
+                if added { "stored" } else { "already known" },
+                state.mempool_size()
+            );
+
+            if added {
+                let peers = state.get_peers();
+                for peer in peers {
+                    if peer != peer_addr {
+                        send_to_node_fire_and_forget(
+                            &peer,
+                            &NodeMessage::NewTx { tx: tx.clone() },
+                        )
+                        .await;
+                    }
+                }
+            }
             None
         }
         NodeMessage::NewBlock { block_index, hash } => {

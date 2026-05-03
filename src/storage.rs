@@ -4,8 +4,11 @@ use std::path::Path;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 
+use crate::config;
 use crate::mempool::{Mempool, MempoolTx};
+use crate::node::{send_to_node_fire_and_forget, NodeMessage};
 
 #[derive(Serialize, Deserialize)]
 pub struct WalletFile {
@@ -150,18 +153,51 @@ pub struct PendingTx {
     pub claimed: bool,
 }
 
+fn relay_targets() -> Vec<String> {
+    let mut peers = BTreeSet::new();
+
+    for peer in ["127.0.0.1:8001", "127.0.0.1:8002", "127.0.0.1:8003"] {
+        peers.insert(peer.to_string());
+    }
+
+    for peer in config::bootstrap_peers() {
+        peers.insert(peer);
+    }
+
+    peers.into_iter().collect()
+}
+
+fn propagate_pending_tx(tx: &MempoolTx) {
+    let peers = relay_targets();
+    if peers.is_empty() {
+        return;
+    }
+
+    let message = NodeMessage::NewTx { tx: tx.clone() };
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(async move {
+            for peer in peers {
+                send_to_node_fire_and_forget(&peer, &message).await;
+            }
+        });
+    }
+}
+
 pub fn broadcast_tx(tx: PendingTx) {
     let mut mempool = Mempool::load();
     let mtx = MempoolTx::new(&tx.tx_id, &tx.sender, &tx.receiver, tx.amount, tx.fee);
-    mempool.add(mtx);
+    let added = mempool.add(mtx.clone());
 
-    crate::logger::log_tx(&format!(
-        "Broadcast TX {} - {} GHST fee - {} -> {}",
-        &tx.tx_id[..16.min(tx.tx_id.len())],
-        tx.fee,
-        &tx.sender[..16.min(tx.sender.len())],
-        &tx.receiver[..16.min(tx.receiver.len())],
-    ));
+    if added {
+        crate::logger::log_tx(&format!(
+            "Broadcast TX {} - {} GHST fee - {} -> {}",
+            &tx.tx_id[..16.min(tx.tx_id.len())],
+            tx.fee,
+            &tx.sender[..16.min(tx.sender.len())],
+            &tx.receiver[..16.min(tx.receiver.len())],
+        ));
+        propagate_pending_tx(&mtx);
+    }
 }
 
 pub fn claim_incoming(my_address: &str) -> Vec<PendingTx> {

@@ -1,12 +1,23 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-pub const MEMPOOL_FILE: &str = "ghostcoin_mempool.json";
 pub const MAX_BLOCK_TXS: usize = 100;
 pub const TX_EXPIRY_SECS: i64 = 86_400;
+
+fn mempool_file() -> PathBuf {
+    crate::config::data_dir().join("ghostcoin_mempool.json")
+}
+
+fn ensure_mempool_parent_dir(path: &Path) {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MempoolTx {
@@ -80,17 +91,21 @@ pub struct Mempool {
 
 impl Mempool {
     pub fn load() -> Self {
-        if !Path::new(MEMPOOL_FILE).exists() {
+        let path = mempool_file();
+        ensure_mempool_parent_dir(&path);
+        if !path.exists() {
             return Self { txs: vec![] };
         }
-        let json = fs::read_to_string(MEMPOOL_FILE).unwrap_or_default();
+        let json = fs::read_to_string(path).unwrap_or_default();
         let txs = serde_json::from_str(&json).unwrap_or_default();
         Self { txs }
     }
 
     pub fn save(&self) {
         if let Ok(json) = serde_json::to_string_pretty(&self.txs) {
-            let _ = fs::write(MEMPOOL_FILE, json);
+            let path = mempool_file();
+            ensure_mempool_parent_dir(&path);
+            let _ = fs::write(path, json);
         }
     }
 

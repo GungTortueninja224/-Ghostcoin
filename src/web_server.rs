@@ -324,9 +324,9 @@ fn blocks_panel(data: &ViewData) -> String {
             <div class="mini-copy">Head hash for the active chain.</div>
           </div>
           <div class="substat">
-            <div class="eyeline">Total tx</div>
+            <div class="eyeline">Confirmed tx</div>
             <div class="big">{}</div>
-            <div class="mini-copy">Confirmed transactions across the chain.</div>
+            <div class="mini-copy">Transactions already mined into blocks.</div>
           </div>
         </div>
         <table>
@@ -501,7 +501,7 @@ fn tokenomics_panel(data: &ViewData) -> String {
       <article class="panel table-card">
         <div class="section-title">
           <h2>Tokenomics</h2>
-          <span>Total transactions: {}</span>
+          <span>Confirmed transactions: {}</span>
         </div>
         <table>
           <tr><th>Field</th><th>Value</th></tr>
