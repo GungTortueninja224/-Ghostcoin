@@ -3,7 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-pub const CHAIN_STATE_PATH: &str = "ghostcoin_chain.json";
+pub fn chain_state_path() -> String {
+    if std::env::var("GHOSTCOIN_SERVER").is_ok() {
+        "/app/data/ghostcoin_chain.json".to_string()
+    } else {
+        "ghostcoin_chain.json".to_string()
+    }
+}
 pub const MAX_SUPPLY: u64 = 50_000_000;
 pub const INITIAL_REWARD: u64 = 65;
 pub const HALVING_INTERVAL: u64 = 210_000;
@@ -33,18 +39,19 @@ impl ChainState {
     }
 
     pub fn load() -> Self {
-        if !Path::new(CHAIN_STATE_PATH).exists() {
+        let path = chain_state_path();
+        if !Path::new(&path).exists() {
             let state = Self::new();
             state.save();
             return state;
         }
-        let json = fs::read_to_string(CHAIN_STATE_PATH).unwrap_or_default();
+        let json = fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&json).unwrap_or_else(|_| Self::new())
     }
 
     pub fn save(&self) {
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(CHAIN_STATE_PATH, json);
+            let _ = fs::write(chain_state_path(), json);
         }
     }
 

@@ -6,6 +6,20 @@ use crate::web_server::start_web_server_on_port;
 use std::fs;
 use std::path::Path;
 
+fn reset_chain_files() -> [String; 2] {
+    if std::env::var("GHOSTCOIN_SERVER").is_ok() {
+        [
+            "/app/data/ghostcoin_blocks.json".to_string(),
+            "/app/data/ghostcoin_chain.json".to_string(),
+        ]
+    } else {
+        [
+            "ghostcoin_blocks.json".to_string(),
+            "ghostcoin_chain.json".to_string(),
+        ]
+    }
+}
+
 fn env_port(key: &str) -> Option<u16> {
     std::env::var(key).ok()?.parse::<u16>().ok()
 }
@@ -23,9 +37,9 @@ fn reset_chain_if_requested() {
     }
 
     println!("RESET_CHAIN=true detecte: reinitialisation des fichiers chain...");
-    for file in ["ghostcoin_blocks.json", "ghostcoin_chain.json"] {
-        if Path::new(file).exists() {
-            match fs::remove_file(file) {
+    for file in reset_chain_files() {
+        if Path::new(&file).exists() {
+            match fs::remove_file(&file) {
                 Ok(_) => println!("  - supprime {}", file),
                 Err(e) => println!("  - echec suppression {}: {}", file, e),
             }

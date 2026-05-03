@@ -6,7 +6,13 @@ use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-const BLOCKS_FILE: &str = "ghostcoin_blocks.json";
+fn blocks_file() -> String {
+    if std::env::var("GHOSTCOIN_SERVER").is_ok() {
+        "/app/data/ghostcoin_blocks.json".to_string()
+    } else {
+        "ghostcoin_blocks.json".to_string()
+    }
+}
 const SYNC_CHUNK_SIZE: usize = 128;
 const SYNC_CHUNK_MAX: usize = 512;
 
@@ -26,16 +32,17 @@ impl SharedChain {
     }
 
     fn load_from_disk() -> Vec<MinedBlock> {
-        if !Path::new(BLOCKS_FILE).exists() {
+        let path = blocks_file();
+        if !Path::new(&path).exists() {
             return vec![];
         }
-        let json = fs::read_to_string(BLOCKS_FILE).unwrap_or_default();
+        let json = fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&json).unwrap_or_default()
     }
 
     fn save_to_disk(blocks: &[MinedBlock]) {
         let json = serde_json::to_string_pretty(blocks).unwrap();
-        let _ = fs::write(BLOCKS_FILE, json);
+        let _ = fs::write(blocks_file(), json);
     }
 
     fn rebuild_chain_state(blocks: &[MinedBlock]) {
