@@ -234,14 +234,21 @@ impl ChainSync {
     }
 
     pub async fn push_missing_blocks_to_peer(&self, peer: &str) -> usize {
+        println!("DEBUG push_missing: requesting tip from {}", peer);
         let Some(NodeMessage::ChainTip { last_index, .. }) =
             send_to_node(peer, &NodeMessage::GetChainTip).await
         else {
+            println!("DEBUG push_missing: no ChainTip response from {}", peer);
             return 0;
         };
 
         let local_tip = self.chain.last_index();
+        println!(
+            "DEBUG push_missing: peer={} remote_tip={} local_tip={}",
+            peer, last_index, local_tip
+        );
         if last_index >= local_tip {
+            println!("DEBUG push_missing: peer {} already up to date", peer);
             return 0;
         }
 
@@ -250,6 +257,7 @@ impl ChainSync {
         let blocks = self.chain.get_blocks_since(last_index, SYNC_CHUNK_MAX);
         let count = blocks.len();
         if count == 0 {
+            println!("DEBUG push_missing: no local blocks to send to {}", peer);
             return 0;
         }
 

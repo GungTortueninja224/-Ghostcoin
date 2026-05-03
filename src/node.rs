@@ -109,13 +109,8 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
     // Record the actual remote endpoint instead of assuming localhost.
     state.add_peer(&peer_addr);
 
-    let mut buf = Vec::new();
-    match tokio::time::timeout(
-        tokio::time::Duration::from_secs(5),
-        socket.read_to_end(&mut buf),
-    )
-    .await
-    {
+    let mut buf = vec![0u8; 64 * 1024];
+    match tokio::time::timeout(tokio::time::Duration::from_secs(5), socket.read(&mut buf)).await {
         Ok(Ok(n)) if n > 0 => {
             println!("Message received from {}", peer_addr);
             match serde_json::from_slice::<NodeMessage>(&buf[..n]) {
@@ -223,15 +218,11 @@ pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> 
             if stream.write_all(json.as_bytes()).await.is_err() {
                 return None;
             }
-            let (mut reader, mut writer) = stream.into_split();
-            let _ = writer.shutdown().await;
+            let _ = stream.flush().await;
 
-            let mut buf = Vec::new();
-            match tokio::time::timeout(
-                tokio::time::Duration::from_secs(8),
-                reader.read_to_end(&mut buf),
-            )
-            .await
+            let mut buf = vec![0u8; 64 * 1024];
+            match tokio::time::timeout(tokio::time::Duration::from_secs(8), stream.read(&mut buf))
+                .await
             {
                 Ok(Ok(n)) if n > 0 => serde_json::from_slice::<NodeMessage>(&buf[..n]).ok(),
                 _ => None,
