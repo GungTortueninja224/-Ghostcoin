@@ -168,19 +168,6 @@ fn render_nav(active: &str) -> String {
 fn render_market_sidebar() -> String {
     r#"
       <aside class="panel hero-side">
-        <div class="visual-card">
-          <div class="coin-orb">
-            <div class="coin-core">&#128123;</div>
-          </div>
-          <div class="security-ribbon">END-TO-END ENCRYPTED</div>
-          <div class="feature-pills">
-            <span>Stealth</span>
-            <span>Ring Sig</span>
-            <span>zk-SNARK</span>
-            <span>Dandelion++</span>
-            <span>Quantum-Safe</span>
-          </div>
-        </div>
         <div class="section-kicker">Market snapshot</div>
         <div class="price-card">
           <div><strong>GHST</strong><span>Mainnet reference</span></div>
@@ -435,12 +422,12 @@ fn buy_panel() -> String {
           <h2>Buy GHST</h2>
           <span>Current acquisition flow for early network users</span>
         </div>
-        <div class="wallet-grid">
-          <a class="wallet-card" href="#"><strong>Windows</strong><span>GhostCoin CLI · v1.0 · ~24 MB</span></a>
-          <a class="wallet-card" href="#"><strong>macOS</strong><span>GhostCoin CLI · v1.0 · ~24 MB</span></a>
-          <a class="wallet-card" href="#"><strong>Linux</strong><span>GhostCoin CLI · v1.0 · ~24 MB</span></a>
-          <a class="wallet-card" href="https://github.com/GungTortueninja224/-Ghostcoin"><strong>View Source</strong><span>GitHub repository and code access</span></a>
-        </div>
+        <table>
+          <tr><th>Method</th><th>Details</th></tr>
+          <tr><td>Mine locally</td><td>Run the CLI wallet, choose mining, and secure fresh GHST directly from the chain.</td></tr>
+          <tr><td>P2P transfer</td><td>Receive GHST from another wallet once wallet-to-wallet transfers are active in your session.</td></tr>
+          <tr><td>Source code</td><td>Browse the project on GitHub and build the wallet locally from the public repository.</td></tr>
+        </table>
       </article>
 "##
     .to_string()
@@ -747,63 +734,6 @@ fn render_single_page(data: &ViewData) -> String {
       font-size: 1rem;
       line-height: 1.7;
     }}
-    .visual-card {{
-      position: relative;
-      padding: 18px;
-      border-radius: 22px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(244,246,245,0.98));
-      border: 1px solid rgba(20,35,31,0.08);
-      overflow: hidden;
-    }}
-    .coin-orb {{
-      height: 220px;
-      display: grid;
-      place-items: center;
-      background:
-        radial-gradient(circle at 35% 25%, rgba(255,255,255,0.92), rgba(255,255,255,0) 32%),
-        radial-gradient(circle at 68% 72%, rgba(17,17,17,0.16), rgba(17,17,17,0) 28%),
-        linear-gradient(135deg, #fcfcfb 0%, #ecefef 100%);
-      border-radius: 18px;
-    }}
-    .coin-core {{
-      width: 126px;
-      height: 126px;
-      display: grid;
-      place-items: center;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #ffffff, #dedede 58%, #8d8d8d 100%);
-      border: 8px solid #1e1e1e;
-      box-shadow: 0 18px 38px rgba(18,18,18,0.16);
-      font-size: 3rem;
-      filter: grayscale(1);
-    }}
-    .security-ribbon {{
-      position: absolute;
-      top: 14px;
-      left: 14px;
-      padding: 8px 12px;
-      border-radius: 12px;
-      background: rgba(17,17,17,0.92);
-      color: #fff;
-      font-size: 0.72rem;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-    }}
-    .feature-pills {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-top: 12px;
-    }}
-    .feature-pills span {{
-      padding: 8px 11px;
-      border-radius: 999px;
-      border: 1px solid rgba(20,35,31,0.08);
-      background: #fff;
-      font-size: 0.8rem;
-      font-weight: 700;
-      color: var(--ink);
-    }}
     .hero-side {{
       padding: 28px;
       display: grid;
@@ -1071,34 +1001,6 @@ fn render_single_page(data: &ViewData) -> String {
       font-family: "Consolas", "Courier New", monospace;
       color: var(--accent-deep);
       font-size: 0.9rem;
-    }}
-    .wallet-grid {{
-      display: grid;
-      gap: 14px;
-    }}
-    .wallet-card {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 14px;
-      padding: 16px 18px;
-      border-radius: 18px;
-      background: rgba(255,255,255,0.88);
-      border: 1px solid rgba(20,35,31,0.08);
-      transition: 160ms ease;
-    }}
-    .wallet-card:hover {{
-      transform: translateY(-1px);
-      border-color: rgba(19,156,117,0.22);
-      box-shadow: 0 14px 30px rgba(19,156,117,0.10);
-    }}
-    .wallet-card strong {{
-      display: block;
-      font-size: 1rem;
-    }}
-    .wallet-card span {{
-      color: var(--muted);
-      font-size: 0.86rem;
     }}
     .footer {{
       display: flex;
