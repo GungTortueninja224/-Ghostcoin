@@ -194,6 +194,48 @@ fn render_market_sidebar() -> String {
     .to_string()
 }
 
+fn render_wallet_strip() -> String {
+    r##"
+      <article class="panel wallet-strip">
+        <div class="section-title">
+          <h2>Download wallet</h2>
+          <span>GhostCoin CLI · v1.0</span>
+        </div>
+        <div class="wallet-grid">
+          <a class="wallet-card" href="https://github.com/GungTortueninja224/-Ghostcoin/releases">
+            <div class="wallet-meta">
+              <div class="wallet-icon">⌂</div>
+              <div><strong>Windows</strong><span>~24 MB</span></div>
+            </div>
+            <div class="wallet-arrow">↗</div>
+          </a>
+          <a class="wallet-card" href="https://github.com/GungTortueninja224/-Ghostcoin/releases">
+            <div class="wallet-meta">
+              <div class="wallet-icon">⌘</div>
+              <div><strong>macOS</strong><span>~24 MB</span></div>
+            </div>
+            <div class="wallet-arrow">↗</div>
+          </a>
+          <a class="wallet-card" href="https://github.com/GungTortueninja224/-Ghostcoin/releases">
+            <div class="wallet-meta">
+              <div class="wallet-icon">›</div>
+              <div><strong>Linux</strong><span>~24 MB</span></div>
+            </div>
+            <div class="wallet-arrow">↗</div>
+          </a>
+          <a class="wallet-card" href="https://github.com/GungTortueninja224/-Ghostcoin">
+            <div class="wallet-meta">
+              <div class="wallet-icon">⌗</div>
+              <div><strong>View source</strong><span>GitHub repository</span></div>
+            </div>
+            <div class="wallet-arrow">↗</div>
+          </a>
+        </div>
+      </article>
+"##
+    .to_string()
+}
+
 fn render_panel(key: &str, active: bool, content: String) -> String {
     let class = if active { "tab-panel active" } else { "tab-panel" };
     format!(r#"<section class="{class}" data-panel="{key}">{content}</section>"#)
@@ -422,12 +464,32 @@ fn buy_panel() -> String {
           <h2>Buy GHST</h2>
           <span>Current acquisition flow for early network users</span>
         </div>
-        <table>
-          <tr><th>Method</th><th>Details</th></tr>
-          <tr><td>Mine locally</td><td>Run the CLI wallet, choose mining, and secure fresh GHST directly from the chain.</td></tr>
-          <tr><td>P2P transfer</td><td>Receive GHST from another wallet once wallet-to-wallet transfers are active in your session.</td></tr>
-          <tr><td>Source code</td><td>Browse the project on GitHub and build the wallet locally from the public repository.</td></tr>
-        </table>
+        <div class="buy-grid">
+          <div class="buy-card">
+            <div class="buy-top">
+              <div class="buy-icon">⛏</div>
+              <span class="badge ghost">Live</span>
+            </div>
+            <h3>Mine GHST</h3>
+            <p>Run the CLI wallet, start mining locally, and secure fresh GHST directly from the active chain.</p>
+          </div>
+          <div class="buy-card soft">
+            <div class="buy-top">
+              <div class="buy-icon">⇄</div>
+              <span class="badge demo">Soon</span>
+            </div>
+            <h3>Decentralized exchange</h3>
+            <p>Privacy-friendly swap routes can plug in here once live liquidity and routing are ready.</p>
+          </div>
+          <div class="buy-card soft">
+            <div class="buy-top">
+              <div class="buy-icon">◎</div>
+              <span class="badge demo">Soon</span>
+            </div>
+            <h3>OTC trading</h3>
+            <p>Large size community transfers will fit here later with clearer counterparties and settlement flow.</p>
+          </div>
+        </div>
       </article>
 "##
     .to_string()
@@ -601,27 +663,30 @@ fn render_single_page(data: &ViewData) -> String {
       gap: 14px;
     }}
     .brand-mark {{
-      width: 56px;
-      height: 56px;
+      width: 58px;
+      height: 58px;
       display: grid;
       place-items: center;
       border-radius: 50%;
       border: 1px solid rgba(19,156,117,0.22);
       background: radial-gradient(circle at 30% 30%, #ffffff, #edf8f4 60%, #d6efe6 100%);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 12px 24px rgba(19,156,117,0.14);
-      font-size: 1.1rem;
+      font-size: 1.02rem;
       font-weight: 900;
-      letter-spacing: -0.08em;
+      letter-spacing: -0.06em;
       color: #111;
     }}
     .brand-title {{
-      font-size: 1.25rem;
+      font-size: 1.32rem;
       font-weight: 800;
       letter-spacing: -0.03em;
     }}
     .brand-sub {{
       color: var(--muted);
-      font-size: 0.9rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
     }}
     .live-pill {{
       display: inline-flex;
@@ -718,9 +783,10 @@ fn render_single_page(data: &ViewData) -> String {
     }}
     h1 {{
       margin: 18px 0 12px;
-      font-size: clamp(2.5rem, 4vw, 4.8rem);
-      line-height: 0.95;
+      font-size: clamp(2.8rem, 4vw, 5.1rem);
+      line-height: 0.92;
       letter-spacing: -0.06em;
+      max-width: 10.5ch;
     }}
     .gradient-text {{
       background: linear-gradient(135deg, #101f25 0%, #1c85a7 50%, #13a07c 100%);
@@ -729,10 +795,53 @@ fn render_single_page(data: &ViewData) -> String {
       color: transparent;
     }}
     .hero-copy {{
-      max-width: 58ch;
+      max-width: 46ch;
       color: var(--muted);
-      font-size: 1rem;
-      line-height: 1.7;
+      font-size: 1.02rem;
+      line-height: 1.75;
+      margin-bottom: 18px;
+    }}
+    .hero-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 0 0 18px;
+    }}
+    .hero-btn {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 46px;
+      padding: 0 16px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 0.92rem;
+      border: 1px solid rgba(20,35,31,0.08);
+      background: rgba(255,255,255,0.88);
+      color: var(--ink);
+      box-shadow: 0 10px 24px rgba(20,35,31,0.06);
+    }}
+    .hero-btn.primary {{
+      background: linear-gradient(135deg, var(--accent), #64d1ae);
+      color: #fff;
+      border-color: transparent;
+    }}
+    .hero-tags {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }}
+    .hero-tag {{
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.8);
+      border: 1px solid rgba(20,35,31,0.08);
+      color: var(--ink);
+      font-size: 0.78rem;
+      font-weight: 700;
     }}
     .hero-side {{
       padding: 28px;
@@ -954,6 +1063,102 @@ fn render_single_page(data: &ViewData) -> String {
       font-size: 0.92rem;
       line-height: 1.6;
     }}
+    .buy-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }}
+    .buy-card {{
+      padding: 20px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(240,251,246,0.9));
+      border: 1px solid rgba(19,156,117,0.14);
+    }}
+    .buy-card.soft {{
+      background: rgba(255,255,255,0.82);
+      border-color: rgba(20,35,31,0.08);
+    }}
+    .buy-top {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }}
+    .buy-icon {{
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid rgba(20,35,31,0.08);
+      font-size: 1.15rem;
+      box-shadow: 0 10px 20px rgba(20,35,31,0.06);
+    }}
+    .buy-card h3 {{
+      margin: 0 0 8px;
+      font-size: 1.02rem;
+      letter-spacing: -0.02em;
+    }}
+    .buy-card p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 0.92rem;
+    }}
+    .wallet-strip {{
+      grid-column: 1 / -1;
+      padding: 24px;
+    }}
+    .wallet-grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }}
+    .wallet-card {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.88);
+      border: 1px solid rgba(20,35,31,0.08);
+      box-shadow: 0 12px 24px rgba(20,35,31,0.05);
+    }}
+    .wallet-meta {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }}
+    .wallet-icon {{
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid rgba(20,35,31,0.08);
+      color: var(--ink);
+      font-weight: 900;
+      box-shadow: 0 8px 18px rgba(20,35,31,0.06);
+    }}
+    .wallet-meta strong {{
+      display: block;
+      font-size: 0.98rem;
+      margin-bottom: 3px;
+    }}
+    .wallet-meta span {{
+      display: block;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }}
+    .wallet-arrow {{
+      color: var(--accent-deep);
+      font-weight: 900;
+      font-size: 1rem;
+    }}
     .faq {{
       display: grid;
       gap: 14px;
@@ -1003,20 +1208,29 @@ fn render_single_page(data: &ViewData) -> String {
       font-size: 0.9rem;
     }}
     .footer {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
       gap: 16px;
       margin-top: 24px;
-      padding: 18px 22px;
+      padding: 24px 22px;
       border-top: 1px solid rgba(20,35,31,0.08);
       color: var(--muted);
       font-size: 0.9rem;
+      background: rgba(255,255,255,0.48);
+      border-radius: 22px;
+    }}
+    .footer strong {{
+      display: block;
+      color: var(--text);
+      font-size: 1rem;
+      margin-bottom: 6px;
     }}
     .footer-links {{
       display: flex;
       gap: 16px;
       flex-wrap: wrap;
+      align-items: flex-start;
+      justify-content: flex-end;
     }}
     .footer-links a {{
       color: var(--accent-deep);
@@ -1049,6 +1263,12 @@ fn render_single_page(data: &ViewData) -> String {
       .table-card {{
         padding: 20px;
       }}
+      .wallet-grid {{
+        grid-template-columns: 1fr 1fr;
+      }}
+      .buy-grid {{
+        grid-template-columns: 1fr;
+      }}
       .chart-shell {{
         height: 220px;
       }}
@@ -1056,8 +1276,13 @@ fn render_single_page(data: &ViewData) -> String {
         height: 210px;
       }}
       .footer {{
-        flex-direction: column;
-        align-items: flex-start;
+        grid-template-columns: 1fr;
+      }}
+      .footer-links {{
+        justify-content: flex-start;
+      }}
+      .wallet-grid {{
+        grid-template-columns: 1fr;
       }}
     }}
   </style>
@@ -1069,7 +1294,7 @@ fn render_single_page(data: &ViewData) -> String {
         <div class="brand-mark">GC</div>
         <div>
           <div class="brand-title">GhostCoin <span class="live-pill">Live</span></div>
-          <div class="brand-sub">Public GHST explorer on Railway</div>
+          <div class="brand-sub">Privacy blockchain</div>
         </div>
       </div>
       <div class="topnav">{}</div>
@@ -1078,8 +1303,18 @@ fn render_single_page(data: &ViewData) -> String {
     <section class="hero">
       <div class="panel hero-main">
         <div class="eyebrow">Privacy chain - GHST mainnet</div>
-        <h1><span class="gradient-text">GhostCoin Explorer</span></h1>
-        <div class="hero-copy">One clean explorer page where each menu button reveals its own focused section, so nothing gets stacked in the same place.</div>
+        <h1>The <span class="gradient-text">GhostCoin</span> Explorer</h1>
+        <div class="hero-copy">Live stats for the GHST network.</div>
+        <div class="hero-actions">
+          <a class="hero-btn primary" href="https://github.com/GungTortueninja224/-Ghostcoin/releases">Download wallet</a>
+          <a class="hero-btn" href="https://ghostcoin-production.up.railway.app/api/stats">Open API</a>
+          <a class="hero-btn" href="https://github.com/GungTortueninja224/-Ghostcoin">GitHub</a>
+        </div>
+        <div class="hero-tags">
+          <span class="hero-tag">Stealth addresses</span>
+          <span class="hero-tag">Ring signatures</span>
+          <span class="hero-tag">zk-SNARKs</span>
+        </div>
       </div>
       {}
     </section>
@@ -1109,13 +1344,16 @@ fn render_single_page(data: &ViewData) -> String {
       </div>
 
       {}
+
+      {}
     </section>
 
     <footer class="footer">
-      <div><strong>GhostCoin (GHST)</strong><br>One explorer page, one visible section at a time.</div>
+      <div><strong>GhostCoin (GHST)</strong>One explorer page with cleaner sections, live stats, and a calmer layout inspired by your newer references.</div>
       <div class="footer-links">
         <a href="/api/stats">API Stats</a>
         <a href="/api/mempool">Mempool API</a>
+        <a href="https://github.com/GungTortueninja224/-Ghostcoin">GitHub</a>
       </div>
     </footer>
   </div>
@@ -1264,6 +1502,7 @@ fn render_single_page(data: &ViewData) -> String {
         data.max_supply(),
         data.pending_count(),
         data.state.difficulty,
+        render_wallet_strip(),
         panels,
         data.state.minted_supply,
         data.max_supply()
