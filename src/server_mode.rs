@@ -90,7 +90,7 @@ pub async fn run_server_mode() {
     // Keep explorer available. If PORT conflicts with P2P, move web server.
     let railway_port = env_port("PORT").unwrap_or(p2p_port);
     let web_port = if railway_port == p2p_port {
-        config::web_port()
+        env_port("GHOSTCOIN_WEB_PORT").unwrap_or(8080)
     } else {
         railway_port
     };
