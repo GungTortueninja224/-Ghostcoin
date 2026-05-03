@@ -31,6 +31,10 @@ pub fn chain_file() -> PathBuf {
     data_dir().join("ghostcoin_chain.json")
 }
 
+pub fn instance_lock_file() -> PathBuf {
+    data_dir().join("ghostcoin.instance.lock")
+}
+
 pub fn p2p_port() -> u16 {
     std::env::var("GHOSTCOIN_P2P_PORT")
         .ok()

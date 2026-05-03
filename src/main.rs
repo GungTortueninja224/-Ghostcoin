@@ -13,6 +13,7 @@ mod dandelion;
 mod explorer;
 mod fees;
 mod governance;
+mod instance_lock;
 mod logger;
 mod masternode;
 mod mempool;
@@ -153,6 +154,14 @@ async fn main() {
     if run_cli_command(&args).await {
         return;
     }
+
+    let _instance_lock = match instance_lock::InstanceLock::acquire() {
+        Ok(lock) => lock,
+        Err(message) => {
+            eprintln!("{}", message);
+            return;
+        }
+    };
 
     // ── MODE SERVEUR (Railway/VPS) ───────────────
     // Si la variable d'environnement GHOSTCOIN_SERVER est définie
