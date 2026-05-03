@@ -138,30 +138,29 @@ impl ViewData {
     }
 }
 
-fn nav_link(active: &str, key: &str, href: &str, label: &str) -> String {
-    let class = if active == key {
-        "nav-link active"
-    } else {
-        "nav-link"
-    };
-    format!("<a class=\"{}\" href=\"{}\">{}</a>", class, href, label)
+fn nav_link(active: &str, key: &str, label: &str) -> String {
+    let class = if active == key { "nav-link active" } else { "nav-link" };
+    format!(
+        "<a class=\"{}\" href=\"#\" data-tab=\"{}\">{}</a>",
+        class, key, label
+    )
 }
 
 fn render_nav(active: &str) -> String {
     [
-        ("overview", "/", "Overview"),
-        ("blocks", "/blocks", "Blocks"),
-        ("mempool", "/mempool", "Mempool"),
-        ("holders", "/holders", "Holders"),
-        ("mining", "/mining", "Mining"),
-        ("buy", "/buy", "Buy"),
-        ("tokenomics", "/tokenomics", "Tokenomics"),
-        ("roadmap", "/roadmap", "Roadmap"),
-        ("faq", "/faq", "FAQ"),
-        ("api", "/api", "API"),
+        ("overview", "Overview"),
+        ("blocks", "Blocks"),
+        ("mempool", "Mempool"),
+        ("holders", "Holders"),
+        ("mining", "Mining"),
+        ("buy", "Buy"),
+        ("tokenomics", "Tokenomics"),
+        ("roadmap", "Roadmap"),
+        ("faq", "FAQ"),
+        ("api", "API"),
     ]
     .iter()
-    .map(|(key, href, label)| nav_link(active, key, href, label))
+    .map(|(key, label)| nav_link(active, key, label))
     .collect::<Vec<_>>()
     .join("")
 }
@@ -195,17 +194,38 @@ fn render_market_sidebar() -> String {
     .to_string()
 }
 
-fn render_layout(
-    active: &str,
-    title: &str,
-    kicker: &str,
-    lead: &str,
-    body: String,
-    data: &ViewData,
-) -> String {
-    let chart_panel = if active == "overview" {
-        format!(
-            r#"
+fn render_panel(key: &str, active: bool, content: String) -> String {
+    let class = if active { "tab-panel active" } else { "tab-panel" };
+    format!(r#"<section class="{class}" data-panel="{key}">{content}</section>"#)
+}
+
+fn overview_panel(data: &ViewData) -> String {
+    format!(
+        r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Overview</h2>
+          <span>Fast health check for the public GhostCoin node</span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Current reward</div>
+            <div class="big">{} GHST</div>
+            <div class="mini-copy">Block subsidy in the current era.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Total fees</div>
+            <div class="big">{} GHST</div>
+            <div class="mini-copy">Fees already secured by confirmed blocks.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Last hash</div>
+            <div class="big"><code>{}</code></div>
+            <div class="mini-copy">Current chain head hash on this node.</div>
+          </div>
+        </div>
+      </article>
+
       <article class="panel content-card wide">
         <div class="section-title">
           <h2>Market context</h2>
@@ -229,13 +249,288 @@ fn render_layout(
         </div>
       </article>
 "#,
-            data.supply_pct(),
-            data.state.minted_supply,
-            data.remaining_supply()
-        )
-    } else {
-        String::new()
-    };
+        data.state.current_reward(),
+        data.state.total_fees,
+        data.last_hash_short(),
+        data.supply_pct(),
+        data.state.minted_supply,
+        data.remaining_supply()
+    )
+}
+
+fn blocks_panel(data: &ViewData) -> String {
+    format!(
+        r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Blocks</h2>
+          <span>Latest chain snapshot</span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Current tip</div>
+            <div class="big">#{}</div>
+            <div class="mini-copy">Latest public height on the node.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Last hash</div>
+            <div class="big"><code>{}</code></div>
+            <div class="mini-copy">Head hash for the active chain.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Total tx</div>
+            <div class="big">{}</div>
+            <div class="mini-copy">Confirmed transactions across the chain.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>Height</th><th>Hash / Snapshot</th><th>Reward</th><th>Status</th></tr>
+          {}
+        </table>
+      </article>
+"#,
+        data.state.block_height,
+        data.last_hash_short(),
+        data.state.total_tx_count,
+        data.blocks_rows()
+    )
+}
+
+fn mempool_panel(data: &ViewData) -> String {
+    format!(
+        r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Mempool</h2>
+          <span>Live pending transaction queue</span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Pending tx</div>
+            <div class="big">{}</div>
+            <div class="mini-copy">Transactions waiting for inclusion.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Total fees</div>
+            <div class="big">{} GHST</div>
+            <div class="mini-copy">Accumulated fees in the current mempool.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Average fee</div>
+            <div class="big">{:.2} GHST</div>
+            <div class="mini-copy">Average fee across pending entries.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>TX ID</th><th>Amount</th><th>Fee</th><th>Fee rate</th><th>Priority</th></tr>
+          {}
+        </table>
+      </article>
+"#,
+        data.pending_count(),
+        data.total_mempool_fees(),
+        data.avg_fee(),
+        data.mempool_rows()
+    )
+}
+
+fn holders_panel(data: &ViewData) -> String {
+    format!(
+        r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Top holders</h2>
+          <span><span class="badge demo">Demo ranking until full holder indexer lands</span></span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Total holders</div>
+            <div class="big">14,217</div>
+            <div class="mini-copy">Estimated public holder set.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Top 10 share</div>
+            <div class="big">39.60%</div>
+            <div class="mini-copy">Demo concentration view for the explorer layout.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Average balance</div>
+            <div class="big">59 GHST</div>
+            <div class="mini-copy">Display-only until the address index ships.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>#</th><th>Address</th><th>Balance</th><th>Share</th><th>TXs</th></tr>
+          {}
+        </table>
+      </article>
+"#,
+        data.holders_rows()
+    )
+}
+
+fn mining_panel(data: &ViewData) -> String {
+    format!(
+        r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Mining</h2>
+          <span>Current chain economics and halving progress</span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Reward</div>
+            <div class="big">{} GHST</div>
+            <div class="mini-copy">Current subsidy for each mined block.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Next halving</div>
+            <div class="big">#{}</div>
+            <div class="mini-copy">Planned halving height based on protocol rules.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Era progress</div>
+            <div class="big">{:.2}%</div>
+            <div class="mini-copy">Progress inside the active halving window.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>Metric</th><th>Value</th></tr>
+          <tr><td>Consensus</td><td>Proof of Work, SHA-256</td></tr>
+          <tr><td>Current reward</td><td>{} GHST / block</td></tr>
+          <tr><td>Difficulty</td><td>{}</td></tr>
+          <tr><td>Halving interval</td><td>210,000 blocks</td></tr>
+        </table>
+      </article>
+"#,
+        data.state.current_reward(),
+        data.state.next_halving_block(),
+        data.state.halving_progress(),
+        data.state.current_reward(),
+        data.state.difficulty
+    )
+}
+
+fn buy_panel() -> String {
+    r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Buy GHST</h2>
+          <span>Current acquisition flow for early network users</span>
+        </div>
+        <table>
+          <tr><th>Method</th><th>Details</th></tr>
+          <tr><td>Mine locally</td><td>Run the CLI wallet, choose mining, and secure fresh GHST directly from the chain.</td></tr>
+          <tr><td>P2P transfer</td><td>Receive GHST from another wallet once wallet-to-wallet transfers are active in your session.</td></tr>
+          <tr><td>Exchange listing</td><td>Planned for a later phase. This section will switch from guide mode to live market routing once listings exist.</td></tr>
+        </table>
+      </article>
+"#
+    .to_string()
+}
+
+fn tokenomics_panel(data: &ViewData) -> String {
+    format!(
+        r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Tokenomics</h2>
+          <span>Total transactions: {}</span>
+        </div>
+        <table>
+          <tr><th>Field</th><th>Value</th></tr>
+          <tr><td>Name</td><td>GhostCoin</td></tr>
+          <tr><td>Symbol</td><td>GHST</td></tr>
+          <tr><td>Max supply</td><td>{} GHST</td></tr>
+          <tr><td>Current reward</td><td>{} GHST per block</td></tr>
+          <tr><td>Consensus</td><td>Proof of Work, SHA-256</td></tr>
+          <tr><td>Halving interval</td><td>210,000 blocks</td></tr>
+          <tr><td>Infrastructure</td><td>Rust + Railway</td></tr>
+          <tr><td>Status</td><td>Public explorer online</td></tr>
+        </table>
+      </article>
+"#,
+        data.state.total_tx_count,
+        data.max_supply(),
+        data.state.current_reward()
+    )
+}
+
+fn roadmap_panel() -> String {
+    r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>Roadmap</h2>
+          <span>Short-term product and protocol priorities</span>
+        </div>
+        <div class="roadmap">
+          <div class="roadmap-item"><strong>Phase 1 - Stable explorer</strong><p>Keep the public dashboard clean, readable, and wired to live node stats plus mempool visibility.</p></div>
+          <div class="roadmap-item"><strong>Phase 2 - Wallet transfers</strong><p>Expose the first public GHST transactions between wallets with clearer transaction detail pages and live confirmations.</p></div>
+          <div class="roadmap-item"><strong>Phase 3 - Public seed</strong><p>Move to a persistent seed or VPS so chain history survives restarts and bootstrap becomes automatic.</p></div>
+        </div>
+      </article>
+"#
+    .to_string()
+}
+
+fn faq_panel() -> String {
+    r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>FAQ</h2>
+          <span>Quick answers for miners, holders, and node operators</span>
+        </div>
+        <div class="faq">
+          <details open>
+            <summary>Why can Railway show height #0 after a restart?</summary>
+            <p>Because the free Railway setup has no persistent volume. After a restart, the node needs either a public bootstrap peer or a persistent disk to recover its chain state automatically.</p>
+          </details>
+          <details>
+            <summary>Is the mempool live?</summary>
+            <p>Yes. The mempool section reads the current pending queue from the running node and shows real pending transactions when they exist.</p>
+          </details>
+          <details>
+            <summary>Are holders and buy sections fully live?</summary>
+            <p>Not yet. Those sections are intentionally marked as demo or guide content until the backing indexer and liquidity sources are ready.</p>
+          </details>
+        </div>
+      </article>
+"#
+    .to_string()
+}
+
+fn api_panel() -> String {
+    r#"
+      <article class="panel table-card">
+        <div class="section-title">
+          <h2>API and endpoints</h2>
+          <span>Use these for wallets, nodes, or dashboards</span>
+        </div>
+        <div class="endpoint-list">
+          <div class="endpoint">TCP -> shuttle.proxy.rlwy.net:48191</div>
+          <div class="endpoint">HTTP -> ghostcoin-production.up.railway.app</div>
+          <div class="endpoint">API -> ghostcoin-production.up.railway.app/api/stats</div>
+          <div class="endpoint">Mempool API -> ghostcoin-production.up.railway.app/api/mempool</div>
+        </div>
+      </article>
+"#
+    .to_string()
+}
+
+fn render_single_page(data: &ViewData) -> String {
+    let panels = [
+        render_panel("overview", true, overview_panel(data)),
+        render_panel("blocks", false, blocks_panel(data)),
+        render_panel("mempool", false, mempool_panel(data)),
+        render_panel("holders", false, holders_panel(data)),
+        render_panel("mining", false, mining_panel(data)),
+        render_panel("buy", false, buy_panel()),
+        render_panel("tokenomics", false, tokenomics_panel(data)),
+        render_panel("roadmap", false, roadmap_panel()),
+        render_panel("faq", false, faq_panel()),
+        render_panel("api", false, api_panel()),
+    ]
+    .join("");
 
     format!(
         r##"<!DOCTYPE html>
@@ -244,7 +539,7 @@ fn render_layout(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GhostCoin Explorer</title>
-  <meta name="description" content="GhostCoin public explorer with dedicated pages for blocks, mempool, holders, mining, roadmap, and API.">
+  <meta name="description" content="GhostCoin public explorer with one clean page and switchable sections for blocks, mempool, holders, mining, roadmap, and API.">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {{
@@ -516,12 +811,19 @@ fn render_layout(
       font-size: 0.9rem;
       line-height: 1.55;
     }}
-    .wide {{ grid-column: span 8; }}
-    .narrow {{ grid-column: span 4; }}
     .content-card,
     .table-card {{
       padding: 24px;
       grid-column: 1 / -1;
+    }}
+    .wide {{ grid-column: span 8; }}
+    .narrow {{ grid-column: span 4; }}
+    .tab-panel {{
+      display: none;
+      grid-column: 1 / -1;
+    }}
+    .tab-panel.active {{
+      display: contents;
     }}
     .section-title {{
       display: flex;
@@ -746,9 +1048,9 @@ fn render_layout(
 
     <section class="hero">
       <div class="panel hero-main">
-        <div class="eyebrow">{}</div>
-        <h1><span class="gradient-text">{}</span></h1>
-        <div class="hero-copy">{}</div>
+        <div class="eyebrow">Privacy chain - GHST mainnet</div>
+        <h1><span class="gradient-text">GhostCoin Explorer</span></h1>
+        <div class="hero-copy">One clean explorer page where each menu button reveals its own focused section, so nothing gets stacked in the same place.</div>
       </div>
       {}
     </section>
@@ -778,11 +1080,10 @@ fn render_layout(
       </div>
 
       {}
-      {}
     </section>
 
     <footer class="footer">
-      <div><strong>GhostCoin (GHST)</strong><br>Dedicated explorer pages for every menu section.</div>
+      <div><strong>GhostCoin (GHST)</strong><br>One explorer page, one visible section at a time.</div>
       <div class="footer-links">
         <a href="/api/stats">API Stats</a>
         <a href="/api/mempool">Mempool API</a>
@@ -791,6 +1092,25 @@ fn render_layout(
   </div>
 
   <script>
+    const navLinks = Array.from(document.querySelectorAll('.nav-link'));
+    const tabPanels = Array.from(document.querySelectorAll('.tab-panel'));
+
+    function activateTab(key) {{
+      navLinks.forEach(link => {{
+        link.classList.toggle('active', link.dataset.tab === key);
+      }});
+      tabPanels.forEach(panel => {{
+        panel.classList.toggle('active', panel.dataset.panel === key);
+      }});
+    }}
+
+    navLinks.forEach(link => {{
+      link.addEventListener('click', (event) => {{
+        event.preventDefault();
+        activateTab(link.dataset.tab);
+      }});
+    }});
+
     async function fetchPrices() {{
       try {{
         const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true');
@@ -908,434 +1228,22 @@ fn render_layout(
 </body>
 </html>"##,
         data.supply_pct(),
-        render_nav(active),
-        kicker,
-        title,
-        lead,
+        render_nav("overview"),
         render_market_sidebar(),
         data.state.block_height,
         data.state.minted_supply,
         data.max_supply(),
         data.pending_count(),
         data.state.difficulty,
-        chart_panel,
-        body,
+        panels,
         data.state.minted_supply,
         data.max_supply()
     )
 }
 
-fn overview_body(data: &ViewData) -> String {
-    format!(
-        r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Overview</h2>
-          <span>Fast health check for the public GhostCoin node</span>
-        </div>
-        <div class="substats">
-          <div class="substat">
-            <div class="eyeline">Current reward</div>
-            <div class="big">{} GHST</div>
-            <div class="mini-copy">Block subsidy in the current era.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Total fees</div>
-            <div class="big">{} GHST</div>
-            <div class="mini-copy">Fees already secured by confirmed blocks.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Last hash</div>
-            <div class="big"><code>{}</code></div>
-            <div class="mini-copy">Current chain head hash on this node.</div>
-          </div>
-        </div>
-      </article>
-"#,
-        data.state.current_reward(),
-        data.state.total_fees,
-        data.last_hash_short()
-    )
-}
-
-fn blocks_body(data: &ViewData) -> String {
-    format!(
-        r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Blocks</h2>
-          <span>Latest chain snapshot</span>
-        </div>
-        <div class="substats">
-          <div class="substat">
-            <div class="eyeline">Current tip</div>
-            <div class="big">#{}</div>
-            <div class="mini-copy">Latest public height on the node.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Last hash</div>
-            <div class="big"><code>{}</code></div>
-            <div class="mini-copy">Head hash for the active chain.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Total tx</div>
-            <div class="big">{}</div>
-            <div class="mini-copy">Confirmed transactions across the chain.</div>
-          </div>
-        </div>
-        <table>
-          <tr><th>Height</th><th>Hash / Snapshot</th><th>Reward</th><th>Status</th></tr>
-          {}
-        </table>
-      </article>
-"#,
-        data.state.block_height,
-        data.last_hash_short(),
-        data.state.total_tx_count,
-        data.blocks_rows()
-    )
-}
-
-fn mempool_body(data: &ViewData) -> String {
-    format!(
-        r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Mempool</h2>
-          <span>Live pending transaction queue</span>
-        </div>
-        <div class="substats">
-          <div class="substat">
-            <div class="eyeline">Pending tx</div>
-            <div class="big">{}</div>
-            <div class="mini-copy">Transactions waiting for inclusion.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Total fees</div>
-            <div class="big">{} GHST</div>
-            <div class="mini-copy">Accumulated fees in the current mempool.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Average fee</div>
-            <div class="big">{:.2} GHST</div>
-            <div class="mini-copy">Average fee across pending entries.</div>
-          </div>
-        </div>
-        <table>
-          <tr><th>TX ID</th><th>Amount</th><th>Fee</th><th>Fee rate</th><th>Priority</th></tr>
-          {}
-        </table>
-      </article>
-"#,
-        data.pending_count(),
-        data.total_mempool_fees(),
-        data.avg_fee(),
-        data.mempool_rows()
-    )
-}
-
-fn holders_body(data: &ViewData) -> String {
-    let _ = data;
-    format!(
-        r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Top holders</h2>
-          <span><span class="badge demo">Demo ranking until full holder indexer lands</span></span>
-        </div>
-        <div class="substats">
-          <div class="substat">
-            <div class="eyeline">Total holders</div>
-            <div class="big">14,217</div>
-            <div class="mini-copy">Estimated public holder set.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Top 10 share</div>
-            <div class="big">39.60%</div>
-            <div class="mini-copy">Demo concentration view for the explorer layout.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Average balance</div>
-            <div class="big">59 GHST</div>
-            <div class="mini-copy">Display-only until the address index ships.</div>
-          </div>
-        </div>
-        <table>
-          <tr><th>#</th><th>Address</th><th>Balance</th><th>Share</th><th>TXs</th></tr>
-          {}
-        </table>
-      </article>
-"#,
-        data.holders_rows()
-    )
-}
-
-fn mining_body(data: &ViewData) -> String {
-    format!(
-        r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Mining</h2>
-          <span>Current chain economics and halving progress</span>
-        </div>
-        <div class="substats">
-          <div class="substat">
-            <div class="eyeline">Reward</div>
-            <div class="big">{} GHST</div>
-            <div class="mini-copy">Current subsidy for each mined block.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Next halving</div>
-            <div class="big">#{}</div>
-            <div class="mini-copy">Planned halving height based on protocol rules.</div>
-          </div>
-          <div class="substat">
-            <div class="eyeline">Era progress</div>
-            <div class="big">{:.2}%</div>
-            <div class="mini-copy">Progress inside the active halving window.</div>
-          </div>
-        </div>
-        <table>
-          <tr><th>Metric</th><th>Value</th></tr>
-          <tr><td>Consensus</td><td>Proof of Work, SHA-256</td></tr>
-          <tr><td>Current reward</td><td>{} GHST / block</td></tr>
-          <tr><td>Difficulty</td><td>{}</td></tr>
-          <tr><td>Halving interval</td><td>210,000 blocks</td></tr>
-        </table>
-      </article>
-"#,
-        data.state.current_reward(),
-        data.state.next_halving_block(),
-        data.state.halving_progress(),
-        data.state.current_reward(),
-        data.state.difficulty
-    )
-}
-
-fn buy_body() -> String {
-    r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Buy GHST</h2>
-          <span>Current acquisition flow for early network users</span>
-        </div>
-        <table>
-          <tr><th>Method</th><th>Details</th></tr>
-          <tr><td>Mine locally</td><td>Run the CLI wallet, choose mining, and secure fresh GHST directly from the chain.</td></tr>
-          <tr><td>P2P transfer</td><td>Receive GHST from another wallet once wallet-to-wallet transfers are active in your session.</td></tr>
-          <tr><td>Exchange listing</td><td>Planned for a later phase. This page will switch from guide mode to live market routing once listings exist.</td></tr>
-        </table>
-      </article>
-"#
-    .to_string()
-}
-
-fn tokenomics_body(data: &ViewData) -> String {
-    format!(
-        r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Tokenomics</h2>
-          <span>Total transactions: {}</span>
-        </div>
-        <table>
-          <tr><th>Field</th><th>Value</th></tr>
-          <tr><td>Name</td><td>GhostCoin</td></tr>
-          <tr><td>Symbol</td><td>GHST</td></tr>
-          <tr><td>Max supply</td><td>{} GHST</td></tr>
-          <tr><td>Current reward</td><td>{} GHST per block</td></tr>
-          <tr><td>Consensus</td><td>Proof of Work, SHA-256</td></tr>
-          <tr><td>Halving interval</td><td>210,000 blocks</td></tr>
-          <tr><td>Infrastructure</td><td>Rust + Railway</td></tr>
-          <tr><td>Status</td><td>Public explorer online</td></tr>
-        </table>
-      </article>
-"#,
-        data.state.total_tx_count,
-        data.max_supply(),
-        data.state.current_reward()
-    )
-}
-
-fn roadmap_body() -> String {
-    r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>Roadmap</h2>
-          <span>Short-term product and protocol priorities</span>
-        </div>
-        <div class="roadmap">
-          <div class="roadmap-item"><strong>Phase 1 - Stable explorer</strong><p>Keep the public dashboard clean, readable, and wired to live node stats plus mempool visibility.</p></div>
-          <div class="roadmap-item"><strong>Phase 2 - Wallet transfers</strong><p>Expose the first public GHST transactions between wallets with clearer transaction detail pages and live confirmations.</p></div>
-          <div class="roadmap-item"><strong>Phase 3 - Public seed</strong><p>Move to a persistent seed or VPS so chain history survives restarts and bootstrap becomes automatic.</p></div>
-        </div>
-      </article>
-"#
-    .to_string()
-}
-
-fn faq_body() -> String {
-    r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>FAQ</h2>
-          <span>Quick answers for miners, holders, and node operators</span>
-        </div>
-        <div class="faq">
-          <details open>
-            <summary>Why can Railway show height #0 after a restart?</summary>
-            <p>Because the free Railway setup has no persistent volume. After a restart, the node needs either a public bootstrap peer or a persistent disk to recover its chain state automatically.</p>
-          </details>
-          <details>
-            <summary>Is the mempool live?</summary>
-            <p>Yes. The mempool page reads the current pending queue from the running node and shows real pending transactions when they exist.</p>
-          </details>
-          <details>
-            <summary>Are holders and buy pages fully live?</summary>
-            <p>Not yet. Those pages are intentionally marked as demo or guide content until the backing indexer and liquidity sources are ready.</p>
-          </details>
-        </div>
-      </article>
-"#
-    .to_string()
-}
-
-fn api_body() -> String {
-    r#"
-      <article class="panel table-card">
-        <div class="section-title">
-          <h2>API and endpoints</h2>
-          <span>Use these for wallets, nodes, or dashboards</span>
-        </div>
-        <div class="endpoint-list">
-          <div class="endpoint">TCP -> shuttle.proxy.rlwy.net:48191</div>
-          <div class="endpoint">HTTP -> ghostcoin-production.up.railway.app</div>
-          <div class="endpoint">API -> ghostcoin-production.up.railway.app/api/stats</div>
-          <div class="endpoint">Mempool API -> ghostcoin-production.up.railway.app/api/mempool</div>
-        </div>
-      </article>
-"#
-    .to_string()
-}
-
-async fn overview_page() -> Html<String> {
+async fn home() -> Html<String> {
     let data = ViewData::load();
-    Html(render_layout(
-        "overview",
-        "GhostCoin Explorer",
-        "Privacy chain - GHST mainnet",
-        "A brighter public dashboard for GhostCoin. Follow chain growth, inspect mempool activity, review mining economics, and keep the public network endpoints within reach.",
-        overview_body(&data),
-        &data,
-    ))
-}
-
-async fn blocks_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "blocks",
-        "Blocks",
-        "Chain history",
-        "Browse the latest block window for the public GhostCoin node without sharing space with the rest of the explorer.",
-        blocks_body(&data),
-        &data,
-    ))
-}
-
-async fn mempool_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "mempool",
-        "Mempool",
-        "Pending transactions",
-        "Track the live queue of transactions waiting for confirmation, with fee and priority data in one dedicated page.",
-        mempool_body(&data),
-        &data,
-    ))
-}
-
-async fn holders_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "holders",
-        "Top Holders",
-        "Holder distribution",
-        "A dedicated page for holder ranking and concentration visuals, with clear demo labeling until the full index lands.",
-        holders_body(&data),
-        &data,
-    ))
-}
-
-async fn mining_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "mining",
-        "Mining",
-        "Chain economics",
-        "Focus on subsidy, difficulty, and halving progress without mixing it into the rest of the explorer flow.",
-        mining_body(&data),
-        &data,
-    ))
-}
-
-async fn buy_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "buy",
-        "Buy GHST",
-        "Acquisition guide",
-        "A separate guide page for obtaining GHST today and where exchange links will live once listings arrive.",
-        buy_body(),
-        &data,
-    ))
-}
-
-async fn tokenomics_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "tokenomics",
-        "Tokenomics",
-        "Supply model",
-        "GhostCoin supply, reward, issuance, and consensus rules in a dedicated tokenomics page.",
-        tokenomics_body(&data),
-        &data,
-    ))
-}
-
-async fn roadmap_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "roadmap",
-        "Roadmap",
-        "Next milestones",
-        "A standalone roadmap page to keep the project direction visible without cluttering the main explorer.",
-        roadmap_body(),
-        &data,
-    ))
-}
-
-async fn faq_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "faq",
-        "FAQ",
-        "Common answers",
-        "Quick answers for miners, holders, and node operators, separated into a dedicated FAQ page.",
-        faq_body(),
-        &data,
-    ))
-}
-
-async fn api_page() -> Html<String> {
-    let data = ViewData::load();
-    Html(render_layout(
-        "api",
-        "API",
-        "Integration endpoints",
-        "Everything needed to connect dashboards, wallets, and tooling to the public GhostCoin service.",
-        api_body(),
-        &data,
-    ))
+    Html(render_single_page(&data))
 }
 
 async fn api_stats() -> Json<Value> {
@@ -1385,16 +1293,16 @@ async fn api_mempool() -> Json<Value> {
 
 pub async fn start_web_server_on_port(port: u16) {
     let app = Router::new()
-        .route("/", get(overview_page))
-        .route("/blocks", get(blocks_page))
-        .route("/mempool", get(mempool_page))
-        .route("/holders", get(holders_page))
-        .route("/mining", get(mining_page))
-        .route("/buy", get(buy_page))
-        .route("/tokenomics", get(tokenomics_page))
-        .route("/roadmap", get(roadmap_page))
-        .route("/faq", get(faq_page))
-        .route("/api", get(api_page))
+        .route("/", get(home))
+        .route("/blocks", get(home))
+        .route("/mempool", get(home))
+        .route("/holders", get(home))
+        .route("/mining", get(home))
+        .route("/buy", get(home))
+        .route("/tokenomics", get(home))
+        .route("/roadmap", get(home))
+        .route("/faq", get(home))
+        .route("/api", get(home))
         .route("/api/stats", get(api_stats))
         .route("/api/mempool", get(api_mempool));
 
