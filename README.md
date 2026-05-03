@@ -57,6 +57,16 @@ To also persist UTF-8 in your PowerShell profile:
 .\scripts\enable-powershell-utf8.ps1 -Persist
 ```
 
+## Whitepaper
+
+The GhostCoin technical whitepaper describes the v1 testnet architecture,
+tokenomics, and privacy stack in detail.
+
+- [Whitepaper v0.1 (PDF)](docs/whitepaper/GhostCoin_Whitepaper_v0.1.pdf)
+- [Whitepaper v0.1 (DOCX)](docs/whitepaper/GhostCoin_Whitepaper_v0.1.docx)
+
+> Anchored on commit `aab4040` - branch `main`
+
 ## Troubleshooting
 
 - Make sure Rust and Cargo are installed.
