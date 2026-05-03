@@ -227,8 +227,13 @@ pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> 
             let _ = writer.shutdown().await;
 
             let mut buf = Vec::new();
-            match reader.read_to_end(&mut buf).await {
-                Ok(n) if n > 0 => serde_json::from_slice::<NodeMessage>(&buf[..n]).ok(),
+            match tokio::time::timeout(
+                tokio::time::Duration::from_secs(8),
+                reader.read_to_end(&mut buf),
+            )
+            .await
+            {
+                Ok(Ok(n)) if n > 0 => serde_json::from_slice::<NodeMessage>(&buf[..n]).ok(),
                 _ => None,
             }
         }
