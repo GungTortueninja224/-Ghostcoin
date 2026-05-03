@@ -147,6 +147,8 @@ async fn run_cli_command(args: &[String]) -> bool {
 
 #[tokio::main]
 async fn main() {
+    config::ensure_data_dir().expect("Failed to create data directory");
+
     let args: Vec<String> = env::args().collect();
     if run_cli_command(&args).await {
         return;
@@ -155,7 +157,7 @@ async fn main() {
     // ── MODE SERVEUR (Railway/VPS) ───────────────
     // Si la variable d'environnement GHOSTCOIN_SERVER est définie
     // → tourne en mode noeud sans interface CLI
-    if env::var("GHOSTCOIN_SERVER").is_ok() {
+    if config::is_server() {
         server_mode::run_server_mode().await;
         return;
     }

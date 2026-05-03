@@ -1,4 +1,5 @@
 use crate::chain_state::ChainState;
+use crate::config;
 use crate::miner::MinedBlock;
 use crate::node::{send_to_node, send_to_node_fire_and_forget, NodeMessage};
 use sha2::{Digest, Sha256};
@@ -7,16 +8,12 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn blocks_file() -> String {
-    if std::env::var("GHOSTCOIN_SERVER").is_ok() {
-        "/app/data/ghostcoin_blocks.json".to_string()
-    } else {
-        "ghostcoin_blocks.json".to_string()
-    }
+fn blocks_file() -> std::path::PathBuf {
+    config::blocks_file()
 }
 
-fn ensure_blocks_parent_dir(path: &str) {
-    if let Some(parent) = Path::new(path).parent() {
+fn ensure_blocks_parent_dir(path: &Path) {
+    if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             let _ = fs::create_dir_all(parent);
         }
@@ -44,12 +41,12 @@ impl SharedChain {
     fn load_from_disk() -> Vec<MinedBlock> {
         let path = blocks_file();
         ensure_blocks_parent_dir(&path);
-        if !Path::new(&path).exists() {
+        if !path.exists() {
             Self::rebuild_chain_state(&[]);
             return vec![];
         }
 
-        let json = fs::read_to_string(&path).unwrap_or_default();
+        let json = fs::read_to_string(path).unwrap_or_default();
         let blocks: Vec<MinedBlock> = serde_json::from_str(&json).unwrap_or_default();
         let normalized = Self::normalize_blocks(blocks);
         Self::save_to_disk(&normalized);

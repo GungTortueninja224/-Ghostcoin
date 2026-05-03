@@ -1,23 +1,13 @@
 use crate::chain_state::ChainState;
-use crate::config::GhostCoinConfig;
+use crate::config::{self, GhostCoinConfig};
 use crate::node::{run_node, NodeState};
 use crate::sync::{ChainSync, SharedChain};
 use crate::web_server::start_web_server_on_port;
 use std::fs;
 use std::path::Path;
 
-fn reset_chain_files() -> [String; 2] {
-    if std::env::var("GHOSTCOIN_SERVER").is_ok() {
-        [
-            "/app/data/ghostcoin_blocks.json".to_string(),
-            "/app/data/ghostcoin_chain.json".to_string(),
-        ]
-    } else {
-        [
-            "ghostcoin_blocks.json".to_string(),
-            "ghostcoin_chain.json".to_string(),
-        ]
-    }
+fn reset_chain_files() -> [std::path::PathBuf; 2] {
+    [config::blocks_file(), config::chain_file()]
 }
 
 fn env_port(key: &str) -> Option<u16> {
@@ -31,20 +21,6 @@ fn env_flag(key: &str) -> bool {
     )
 }
 
-fn bootstrap_peers() -> Vec<String> {
-    std::env::var("GHOSTCOIN_BOOTSTRAP_PEERS")
-        .ok()
-        .map(|value| {
-            value
-                .split(',')
-                .map(str::trim)
-                .filter(|peer| !peer.is_empty())
-                .map(str::to_string)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-}
-
 fn reset_chain_if_requested() {
     if !env_flag("RESET_CHAIN") {
         return;
@@ -54,11 +30,11 @@ fn reset_chain_if_requested() {
     for file in reset_chain_files() {
         if Path::new(&file).exists() {
             match fs::remove_file(&file) {
-                Ok(_) => println!("  - supprime {}", file),
-                Err(e) => println!("  - echec suppression {}: {}", file, e),
+                Ok(_) => println!("  - supprime {}", file.display()),
+                Err(e) => println!("  - echec suppression {}: {}", file.display(), e),
             }
         } else {
-            println!("  - absent {}", file);
+            println!("  - absent {}", file.display());
         }
     }
 }
@@ -79,9 +55,7 @@ pub async fn run_server_mode() {
     println!("ðŸŒ Block Explorer    : ghostcoin-production.up.railway.app");
 
     // Railway TCP proxy forwards to this internal port.
-    let p2p_port = env_port("RAILWAY_TCP_APPLICATION_PORT")
-        .or_else(|| env_port("GHOSTCOIN_P2P_PORT"))
-        .unwrap_or(8001);
+    let p2p_port = env_port("RAILWAY_TCP_APPLICATION_PORT").unwrap_or_else(config::p2p_port);
     let shared_chain = SharedChain::new();
     let node = NodeState::new(p2p_port, shared_chain);
     let n = node.clone();
@@ -90,7 +64,7 @@ pub async fn run_server_mode() {
     });
     println!("ðŸŒ Noeud P2P TCP demarre sur port {}", p2p_port);
 
-    let bootstrap_peers = bootstrap_peers();
+    let bootstrap_peers = config::bootstrap_peers();
     if bootstrap_peers.is_empty() {
         println!(
             "Bootstrap desactive: aucun peer configure. Definis GHOSTCOIN_BOOTSTRAP_PEERS=host:port[,host:port] pour recuperer la chaine au demarrage."
@@ -114,9 +88,9 @@ pub async fn run_server_mode() {
     }
 
     // Keep explorer available. If PORT conflicts with P2P, move web server.
-    let railway_port = env_port("PORT").unwrap_or(8001);
+    let railway_port = env_port("PORT").unwrap_or(p2p_port);
     let web_port = if railway_port == p2p_port {
-        env_port("GHOSTCOIN_WEB_PORT").unwrap_or(8080)
+        config::web_port()
     } else {
         railway_port
     };

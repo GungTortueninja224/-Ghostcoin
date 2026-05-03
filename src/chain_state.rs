@@ -3,16 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-pub fn chain_state_path() -> String {
-    if std::env::var("GHOSTCOIN_SERVER").is_ok() {
-        "/app/data/ghostcoin_chain.json".to_string()
-    } else {
-        "ghostcoin_chain.json".to_string()
-    }
+pub fn chain_state_path() -> std::path::PathBuf {
+    crate::config::chain_file()
 }
 
-fn ensure_chain_state_parent_dir(path: &str) {
-    if let Some(parent) = Path::new(path).parent() {
+fn ensure_chain_state_parent_dir(path: &Path) {
+    if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() {
             let _ = fs::create_dir_all(parent);
         }
@@ -49,12 +45,12 @@ impl ChainState {
     pub fn load() -> Self {
         let path = chain_state_path();
         ensure_chain_state_parent_dir(&path);
-        if !Path::new(&path).exists() {
+        if !path.exists() {
             let state = Self::new();
             state.save();
             return state;
         }
-        let json = fs::read_to_string(&path).unwrap_or_default();
+        let json = fs::read_to_string(path).unwrap_or_default();
         serde_json::from_str(&json).unwrap_or_else(|_| Self::new())
     }
 

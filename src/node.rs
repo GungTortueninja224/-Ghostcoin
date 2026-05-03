@@ -1,5 +1,6 @@
 use crate::miner::MinedBlock;
 use crate::sync::{ChainSync, SharedChain};
+use crate::config;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -166,7 +167,7 @@ async fn write_message(socket: &mut TcpStream, msg: &NodeMessage) -> Result<(), 
 }
 
 pub async fn run_node(state: NodeState) {
-    let bind_host = if std::env::var("GHOSTCOIN_SERVER").is_ok() {
+    let bind_host = if config::is_server() {
         "0.0.0.0"
     } else {
         "127.0.0.1"
