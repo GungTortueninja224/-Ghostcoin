@@ -31,6 +31,20 @@ fn env_flag(key: &str) -> bool {
     )
 }
 
+fn bootstrap_peers() -> Vec<String> {
+    std::env::var("GHOSTCOIN_BOOTSTRAP_PEERS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|peer| !peer.is_empty())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
 fn reset_chain_if_requested() {
     if !env_flag("RESET_CHAIN") {
         return;
@@ -76,19 +90,28 @@ pub async fn run_server_mode() {
     });
     println!("ðŸŒ Noeud P2P TCP demarre sur port {}", p2p_port);
 
-    // Bootstrap: pull depuis les peers connus au demarrage.
-    let bootstrap_chain = node.chain.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-        let sync = ChainSync::new_with_chain(
-            bootstrap_chain,
-            vec!["shuttle.proxy.rlwy.net:48191".to_string()],
+    let bootstrap_peers = bootstrap_peers();
+    if bootstrap_peers.is_empty() {
+        println!(
+            "Bootstrap desactive: aucun peer configure. Definis GHOSTCOIN_BOOTSTRAP_PEERS=host:port[,host:port] pour recuperer la chaine au demarrage."
         );
-        let added = sync.sync_from_peers().await;
-        if added > 0 {
-            println!("Bootstrap: {} bloc(s) recuperes depuis les peers", added);
-        }
-    });
+        println!(
+            "Sans volume persistant ni peer bootstrap public, Railway redemarrera a #0 apres restart."
+        );
+    } else {
+        println!("Bootstrap peers configures: {}", bootstrap_peers.join(", "));
+        let bootstrap_chain = node.chain.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+            let sync = ChainSync::new_with_chain(bootstrap_chain, bootstrap_peers);
+            let added = sync.sync_from_peers().await;
+            if added > 0 {
+                println!("Bootstrap: {} bloc(s) recuperes depuis les peers", added);
+            } else {
+                println!("Bootstrap: aucun bloc recupere depuis les peers configures");
+            }
+        });
+    }
 
     // Keep explorer available. If PORT conflicts with P2P, move web server.
     let railway_port = env_port("PORT").unwrap_or(8001);
