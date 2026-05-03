@@ -1,13 +1,10 @@
-use crate::chain_state::ChainState;
+use crate::chain_state::{ChainState, MAX_SUPPLY};
 use crate::logger::log_mining;
 use crate::mempool::Mempool;
 use crate::sync::SharedChain;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-// ==========================================
-// BLOC MINÉ — doit être AVANT impl Miner
-// ==========================================
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MinedBlock {
     pub index: u32,
@@ -20,9 +17,6 @@ pub struct MinedBlock {
     pub fees_collected: u64,
 }
 
-// ==========================================
-// MINEUR
-// ==========================================
 pub struct Miner {
     pub address: String,
     pub difficulty: usize,
@@ -39,47 +33,42 @@ impl Miner {
         }
     }
 
-    pub fn mine_block(&mut self, _chain: &SharedChain) -> MinedBlock {
-        let mut state = ChainState::load();
+    pub fn mine_block(&mut self, chain: &SharedChain) -> MinedBlock {
+        let state = ChainState::load();
         let reward = state.current_reward();
-        let index = state.block_height as u32 + 1;
-        let previous_hash = state.last_block_hash.clone();
+        let index = chain.last_index().saturating_add(1);
+        let previous_hash = chain.last_hash();
         let timestamp = chrono::Utc::now().timestamp_millis() as u128;
         let target = "0".repeat(self.difficulty);
 
-        // Sélectionne TX du mempool par priorité
         let mut mempool = Mempool::load();
         let selected_txs = mempool.select_for_block();
         let fees_collected = selected_txs.iter().map(|tx| tx.fee).sum::<u64>();
         let tx_ids: Vec<String> = selected_txs.iter().map(|tx| tx.tx_id.clone()).collect();
 
         println!(
-            "\n⛏️  Mining bloc {} — Récompense: {} GHST + {} GHST fees",
+            "\nMining bloc {} - Reward: {} GHST + {} GHST fees",
             index, reward, fees_collected
         );
-        println!("   TX incluses : {}", selected_txs.len());
-        println!(
-            "   Supply      : {} / {} GHST",
-            state.minted_supply,
-            crate::chain_state::MAX_SUPPLY
-        );
+        println!("   Included TX: {}", selected_txs.len());
+        println!("   Supply      : {} / {} GHST", state.minted_supply, MAX_SUPPLY);
 
         if !selected_txs.is_empty() {
-            println!("\n   📋 TX sélectionnées par priorité :");
+            println!("\n   Selected TX by priority:");
             for tx in selected_txs.iter().take(3) {
                 println!(
-                    "      {} {}... — {} GHST fee",
+                    "      {} {}... - {} GHST fee",
                     tx.priority_label(),
                     &tx.tx_id[..12],
                     tx.fee
                 );
             }
             if selected_txs.len() > 3 {
-                println!("      ... et {} autres", selected_txs.len() - 3);
+                println!("      ... and {} more", selected_txs.len() - 3);
             }
         }
 
-        let total_reward = reward + fees_collected;
+        let total_reward = reward.saturating_add(fees_collected);
         let data = format!(
             "coinbase:miner={} reward={} fees={} txs={} height={}",
             &self.address[..16.min(self.address.len())],
@@ -97,7 +86,6 @@ impl Miner {
             fees_collected
         ));
 
-        // Proof of Work
         let mut nonce = 0u64;
         let hash = loop {
             let input = format!("{}{}{}{}{}", index, timestamp, data, previous_hash, nonce);
@@ -106,37 +94,30 @@ impl Miner {
             let hash = format!("{:x}", h.finalize());
             if hash.starts_with(&target) {
                 println!(
-                    "\n✅ Bloc #{} miné ! Nonce: {} Hash: {}...",
+                    "\nBloc #{} mined! Nonce: {} Hash: {}...",
                     index,
                     nonce,
                     &hash[..12]
                 );
                 break hash;
             }
-            nonce += 1;
+            nonce = nonce.saturating_add(1);
             if nonce.is_multiple_of(500_000) {
-                println!("   ... {} essais", nonce);
+                println!("   ... {} attempts", nonce);
             }
         };
 
-        // Confirme les TX dans le mempool
         if !tx_ids.is_empty() {
             mempool.confirm_txs(&tx_ids, index as u64);
-            println!("✅ {} TX confirmées dans le bloc #{}", tx_ids.len(), index);
+            println!("{} TX confirmed in block #{}", tx_ids.len(), index);
         }
 
-        // Met à jour ChainState global
-        state.add_block(
-            &hash,
-            total_reward,
-            fees_collected,
-            selected_txs.len() as u64,
-        );
-        self.total_mined += total_reward;
+        self.total_mined = self.total_mined.saturating_add(total_reward);
 
         log_mining(&format!(
-            "Bloc #{} confirmé | Supply: {} GHST",
-            index, state.minted_supply
+            "Bloc #{} confirmed | Supply: {} GHST",
+            index,
+            state.minted_supply.saturating_add(total_reward)
         ));
 
         MinedBlock {

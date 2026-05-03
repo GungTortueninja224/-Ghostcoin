@@ -43,10 +43,48 @@ impl SharedChain {
         let path = blocks_file();
         ensure_blocks_parent_dir(&path);
         if !Path::new(&path).exists() {
+            Self::rebuild_chain_state(&[]);
             return vec![];
         }
         let json = fs::read_to_string(&path).unwrap_or_default();
-        serde_json::from_str(&json).unwrap_or_default()
+        let blocks: Vec<MinedBlock> = serde_json::from_str(&json).unwrap_or_default();
+        let normalized = Self::normalize_blocks(blocks);
+        Self::save_to_disk(&normalized);
+        Self::rebuild_chain_state(&normalized);
+        normalized
+    }
+
+    fn normalize_blocks(mut blocks: Vec<MinedBlock>) -> Vec<MinedBlock> {
+        if blocks.is_empty() {
+            return blocks;
+        }
+
+        let original_len = blocks.len();
+        blocks.sort_by_key(|b| b.index);
+        let mut normalized: Vec<MinedBlock> = Vec::new();
+
+        for block in blocks {
+            let valid_next = match normalized.last() {
+                None => block.index == 1 && block.previous_hash == "0",
+                Some(prev) => {
+                    block.index == prev.index.saturating_add(1) && block.previous_hash == prev.hash
+                }
+            };
+
+            if valid_next {
+                normalized.push(block);
+            }
+        }
+
+        if normalized.len() < original_len {
+            println!(
+                "Local chain repaired: kept {} contiguous block(s) out of {}",
+                normalized.len(),
+                original_len
+            );
+        }
+
+        normalized
     }
 
     fn save_to_disk(blocks: &[MinedBlock]) {
@@ -104,6 +142,21 @@ impl SharedChain {
             .iter()
             .any(|existing| existing.hash == block.hash || existing.index == block.index)
         {
+            return;
+        }
+        let expected_index = chain.last().map(|b| b.index.saturating_add(1)).unwrap_or(1);
+        let expected_prev_hash = chain
+            .last()
+            .map(|b| b.hash.clone())
+            .unwrap_or_else(|| "0".to_string());
+        if block.index != expected_index || block.previous_hash != expected_prev_hash {
+            println!(
+                "Rejected inconsistent local block: expected #{} after {}..., got #{} after {}...",
+                expected_index,
+                &expected_prev_hash[..12.min(expected_prev_hash.len())],
+                block.index,
+                &block.previous_hash[..12.min(block.previous_hash.len())]
+            );
             return;
         }
         chain.push(block);
