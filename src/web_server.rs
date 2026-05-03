@@ -1,698 +1,773 @@
-use axum::{routing::get, Router, Json, response::Html};
+use axum::{response::Html, routing::get, Json, Router};
 use serde_json::{json, Value};
 use std::net::SocketAddr;
+
 use crate::chain_state::ChainState;
 use crate::mempool::Mempool;
 
 async fn home() -> Html<String> {
-    let state   = ChainState::load();
+    let state = ChainState::load();
     let mempool = Mempool::load();
+    let max_supply = 50_000_000u64;
+    let remaining_supply = max_supply.saturating_sub(state.minted_supply);
+    let supply_pct = (state.minted_supply as f64 / max_supply as f64) * 100.0;
 
-    Html(format!(r#"<!DOCTYPE html>
+    Html(format!(
+        r##"<!DOCTYPE html>
 <html lang="fr">
 <head>
-    <title>👻 GhostCoin (GHST) — Explorer</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        :root {{
-            --purple: #7c3aed;
-            --purple-light: #a855f7;
-            --green: #22c55e;
-            --red: #ef4444;
-            --bg: #050510;
-            --card: #0d0d1a;
-            --border: #1a1a3e;
-            --text: #e2e8f0;
-            --muted: #64748b;
-        }}
-        * {{ margin:0; padding:0; box-sizing:border-box; }}
-        body {{
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'Inter', -apple-system, sans-serif;
-            min-height: 100vh;
-        }}
-
-        /* HEADER */
-        .header {{
-            background: linear-gradient(180deg, #0d0d2e 0%, #050510 100%);
-            border-bottom: 1px solid var(--border);
-            padding: 0 40px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            height: 70px;
-            position: sticky;
-            top: 0;
-            z-index: 100;
-            backdrop-filter: blur(10px);
-        }}
-        .logo-section {{
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        .logo-icon {{ font-size: 2em; }}
-        .logo-text {{
-            font-size: 1.3em;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--purple-light), #60a5fa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }}
-        .badge-live {{
-            background: var(--green);
-            color: white;
-            padding: 3px 10px;
-            border-radius: 20px;
-            font-size: 0.75em;
-            font-weight: 600;
-            animation: pulse 2s infinite;
-        }}
-        @keyframes pulse {{
-            0%, 100% {{ opacity: 1; }}
-            50% {{ opacity: 0.6; }}
-        }}
-        .nav-links {{ display: flex; gap: 20px; }}
-        .nav-link {{
-            color: var(--muted);
-            text-decoration: none;
-            font-size: 0.9em;
-            transition: color 0.2s;
-        }}
-        .nav-link:hover {{ color: var(--purple-light); }}
-
-        /* PRICE BANNER */
-        .price-banner {{
-            background: linear-gradient(135deg, #0d0d2e, #1a0a3e);
-            border-bottom: 1px solid var(--border);
-            padding: 12px 40px;
-            display: flex;
-            align-items: center;
-            gap: 40px;
-            overflow-x: auto;
-        }}
-        .price-item {{ display: flex; align-items: center; gap: 10px; white-space: nowrap; }}
-        .price-symbol {{ color: var(--muted); font-size: 0.85em; }}
-        .price-value {{ font-weight: 700; font-size: 1em; }}
-        .price-change {{ font-size: 0.8em; padding: 2px 8px; border-radius: 10px; }}
-        .price-change.up {{ background: rgba(34,197,94,0.15); color: var(--green); }}
-        .price-change.down {{ background: rgba(239,68,68,0.15); color: var(--red); }}
-
-        /* MAIN */
-        .container {{ max-width: 1400px; margin: 0 auto; padding: 30px 40px; }}
-
-        /* HERO STATS */
-        .hero {{ margin-bottom: 30px; }}
-        .hero-title {{
-            font-size: 2em;
-            font-weight: 800;
-            margin-bottom: 5px;
-            background: linear-gradient(135deg, white, var(--purple-light));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }}
-        .hero-subtitle {{ color: var(--muted); margin-bottom: 25px; }}
-
-        /* STATS GRID */
-        .stats-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }}
-        .stat-card {{
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 20px;
-            transition: border-color 0.2s, transform 0.2s;
-        }}
-        .stat-card:hover {{
-            border-color: var(--purple);
-            transform: translateY(-2px);
-        }}
-        .stat-icon {{ font-size: 1.5em; margin-bottom: 8px; }}
-        .stat-label {{ color: var(--muted); font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }}
-        .stat-value {{ font-size: 1.4em; font-weight: 700; color: white; }}
-        .stat-sub {{ color: var(--muted); font-size: 0.8em; margin-top: 3px; }}
-
-        /* CHARTS */
-        .charts-grid {{
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-        }}
-        .chart-card {{
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 25px;
-        }}
-        .chart-title {{
-            font-size: 1em;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: var(--purple-light);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }}
-
-        /* SUPPLY BAR */
-        .supply-bar-container {{ margin: 10px 0; }}
-        .supply-bar-bg {{
-            background: var(--border);
-            border-radius: 10px;
-            height: 12px;
-            overflow: hidden;
-            margin: 10px 0;
-        }}
-        .supply-bar-fill {{
-            background: linear-gradient(90deg, var(--purple), var(--purple-light));
-            height: 100%;
-            border-radius: 10px;
-            transition: width 1s ease;
-        }}
-        .supply-labels {{
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.8em;
-            color: var(--muted);
-        }}
-
-        /* PRIVACY BADGES */
-        .privacy-section {{
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 20px;
-        }}
-        .privacy-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 15px;
-        }}
-        .privacy-item {{
-            background: rgba(124,58,237,0.1);
-            border: 1px solid rgba(124,58,237,0.3);
-            border-radius: 12px;
-            padding: 15px;
-        }}
-        .privacy-item-icon {{ font-size: 1.5em; margin-bottom: 8px; }}
-        .privacy-item-title {{ font-weight: 600; font-size: 0.9em; margin-bottom: 4px; }}
-        .privacy-item-desc {{ color: var(--muted); font-size: 0.8em; }}
-
-        /* TABLE */
-        .table-card {{
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 20px;
-        }}
-        .table-title {{
-            font-size: 1em;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: var(--purple-light);
-        }}
-        table {{ width: 100%; border-collapse: collapse; }}
-        th {{ color: var(--muted); font-size: 0.8em; text-transform: uppercase; padding: 10px; text-align: left; border-bottom: 1px solid var(--border); }}
-        td {{ padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.9em; }}
-        tr:hover td {{ background: rgba(124,58,237,0.05); }}
-
-        /* NODE INFO */
-        .node-card {{
-            background: linear-gradient(135deg, rgba(124,58,237,0.1), rgba(96,165,250,0.1));
-            border: 1px solid var(--purple);
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 20px;
-        }}
-        .node-address {{
-            font-family: monospace;
-            background: rgba(0,0,0,0.3);
-            padding: 10px 15px;
-            border-radius: 8px;
-            color: var(--green);
-            font-size: 0.9em;
-            margin-top: 10px;
-        }}
-
-        /* FOOTER */
-        .footer {{
-            text-align: center;
-            padding: 40px;
-            color: var(--muted);
-            border-top: 1px solid var(--border);
-            font-size: 0.85em;
-        }}
-        .footer-links {{ display: flex; justify-content: center; gap: 20px; margin-top: 10px; }}
-        .footer-link {{ color: var(--purple-light); text-decoration: none; }}
-
-        /* RESPONSIVE */
-        @media (max-width: 768px) {{
-            .charts-grid {{ grid-template-columns: 1fr; }}
-            .header {{ padding: 0 15px; }}
-            .container {{ padding: 20px 15px; }}
-            .price-banner {{ padding: 10px 15px; }}
-        }}
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GhostCoin Explorer</title>
+  <meta name="description" content="GhostCoin public block explorer. GHST supply, mempool, reward, endpoints and live market context.">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {{
+      --bg: #f7f6f1;
+      --panel: rgba(255,255,255,0.84);
+      --panel-strong: #ffffff;
+      --line: rgba(18, 38, 31, 0.10);
+      --text: #15251f;
+      --muted: #60716d;
+      --accent: #0f9d74;
+      --accent-deep: #0b6b55;
+      --accent-soft: #dff5ee;
+      --ink: #173540;
+      --warn: #c46e1d;
+      --shadow: 0 24px 60px rgba(22, 35, 28, 0.10);
+      --radius: 24px;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(15,157,116,0.12), transparent 30%),
+        radial-gradient(circle at top right, rgba(23,53,64,0.07), transparent 25%),
+        linear-gradient(180deg, #fffef9 0%, var(--bg) 100%);
+      font-family: "Trebuchet MS", "Gill Sans", sans-serif;
+    }}
+    a {{ color: inherit; text-decoration: none; }}
+    .shell {{
+      width: min(1280px, calc(100vw - 28px));
+      margin: 0 auto;
+      padding: 18px 0 44px;
+    }}
+    .topbar {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 18px 22px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 40px rgba(21,37,31,0.06);
+      position: sticky;
+      top: 12px;
+      z-index: 10;
+    }}
+    .brand {{
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }}
+    .brand-mark {{
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 16px;
+      border: 1px solid rgba(15,157,116,0.16);
+      background: linear-gradient(135deg, var(--accent-soft), #ffffff);
+      font-size: 1.5rem;
+    }}
+    .brand-title {{
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }}
+    .brand-sub {{
+      color: var(--muted);
+      font-size: 0.92rem;
+    }}
+    .live-pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 10px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #effaf6;
+      color: var(--accent-deep);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }}
+    .live-pill::before {{
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 8px rgba(15,157,116,0.12);
+    }}
+    .topnav {{
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }}
+    .topnav a {{
+      padding: 10px 14px;
+      border-radius: 999px;
+      color: var(--ink);
+      font-size: 0.92rem;
+      font-weight: 600;
+    }}
+    .topnav a:hover {{ background: rgba(15,157,116,0.08); }}
+    .hero {{
+      display: grid;
+      grid-template-columns: 1.3fr 0.9fr;
+      gap: 22px;
+      margin-top: 28px;
+      margin-bottom: 24px;
+    }}
+    .panel {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }}
+    .hero-main {{
+      padding: 34px;
+      position: relative;
+      overflow: hidden;
+    }}
+    .hero-main::after {{
+      content: "";
+      position: absolute;
+      right: -50px;
+      bottom: -70px;
+      width: 220px;
+      height: 220px;
+      background: radial-gradient(circle, rgba(15,157,116,0.18), transparent 65%);
+    }}
+    .eyebrow {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-deep);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }}
+    h1 {{
+      margin: 18px 0 12px;
+      font-size: clamp(2.4rem, 4vw, 4.7rem);
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+    }}
+    .hero-copy {{
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 1rem;
+      line-height: 1.7;
+    }}
+    .mini-grid {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 28px;
+    }}
+    .mini {{
+      min-width: 150px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.85);
+      border: 1px solid rgba(15,157,116,0.12);
+    }}
+    .mini .label {{
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }}
+    .mini .value {{
+      margin-top: 8px;
+      font-size: 1.35rem;
+      font-weight: 800;
+    }}
+    .hero-side {{
+      padding: 28px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }}
+    .section-kicker {{
+      color: var(--muted);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
+    .price-card {{
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid rgba(23,53,64,0.08);
+    }}
+    .price-card strong {{ display: block; font-size: 0.98rem; }}
+    .price-card span {{ color: var(--muted); font-size: 0.8rem; }}
+    .price-value {{ text-align: right; font-weight: 800; }}
+    .chip {{
+      display: inline-flex;
+      margin-top: 5px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }}
+    .chip.up {{ background: #ecfaf4; color: var(--accent-deep); }}
+    .chip.down {{ background: #fff0e7; color: var(--warn); }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+    }}
+    .stats {{
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 18px;
+    }}
+    .stat {{
+      padding: 22px;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.76);
+      border: 1px solid var(--line);
+      box-shadow: 0 16px 40px rgba(20,35,31,0.06);
+    }}
+    .stat-top {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }}
+    .stat-name {{
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    .stat-icon {{
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: var(--accent-soft);
+      color: var(--accent-deep);
+      font-size: 1.05rem;
+    }}
+    .stat-number {{
+      font-size: clamp(1.55rem, 2vw, 2rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }}
+    .stat-copy {{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }}
+    .wide {{ grid-column: span 8; }}
+    .narrow {{ grid-column: span 4; }}
+    .content-card {{
+      padding: 24px;
+    }}
+    .section-title {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }}
+    .section-title h2 {{
+      margin: 0;
+      font-size: 1.15rem;
+      letter-spacing: -0.03em;
+    }}
+    .section-title span {{
+      color: var(--muted);
+      font-size: 0.88rem;
+    }}
+    .supply-meta {{
+      display: grid;
+      gap: 16px;
+    }}
+    .progress {{
+      height: 14px;
+      border-radius: 999px;
+      background: #edf1ef;
+      overflow: hidden;
+    }}
+    .progress > div {{
+      height: 100%;
+      width: {:.4}%;
+      background: linear-gradient(90deg, var(--accent), #46c9a0);
+    }}
+    .progress-legend {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }}
+    .features {{
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }}
+    .feature {{
+      padding: 20px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(239,250,246,0.95));
+      border: 1px solid rgba(15,157,116,0.14);
+    }}
+    .feature strong {{
+      display: block;
+      margin: 10px 0 6px;
+      font-size: 1rem;
+    }}
+    .feature p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }}
+    .table-card {{
+      grid-column: 1 / -1;
+      padding: 24px;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+    }}
+    th, td {{
+      padding: 14px 10px;
+      text-align: left;
+      border-bottom: 1px solid rgba(20,35,31,0.08);
+    }}
+    th {{
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    tr:last-child td {{ border-bottom: none; }}
+    .endpoint-list {{
+      display: grid;
+      gap: 12px;
+    }}
+    .endpoint {{
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: #f8fcfb;
+      border: 1px solid rgba(15,157,116,0.14);
+      font-family: "Consolas", "Courier New", monospace;
+      color: var(--accent-deep);
+      font-size: 0.9rem;
+    }}
+    .footer {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-top: 24px;
+      padding: 18px 22px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }}
+    .footer-links {{
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }}
+    .footer-links a {{ color: var(--accent-deep); font-weight: 600; }}
+    @media (max-width: 1120px) {{
+      .hero, .stats, .features {{ grid-template-columns: 1fr 1fr; }}
+      .wide, .narrow {{ grid-column: 1 / -1; }}
+    }}
+    @media (max-width: 760px) {{
+      .shell {{ width: min(100vw - 18px, 100%); }}
+      .topbar {{ flex-direction: column; align-items: flex-start; border-radius: 28px; }}
+      .hero, .stats, .features {{ grid-template-columns: 1fr; }}
+      .hero-main, .hero-side, .content-card, .table-card {{ padding: 20px; }}
+      .footer {{ flex-direction: column; align-items: flex-start; }}
+    }}
+  </style>
 </head>
 <body>
-
-<!-- HEADER -->
-<div class="header">
-    <div class="logo-section">
-        <span class="logo-icon">👻</span>
-        <span class="logo-text">GhostCoin</span>
-        <span class="badge-live">● LIVE</span>
-    </div>
-    <div class="nav-links">
-        <a href="/api/stats" class="nav-link">API Stats</a>
-        <a href="/api/mempool" class="nav-link">Mempool</a>
-    </div>
-</div>
-
-<!-- PRICE BANNER (live via JS) -->
-<div class="price-banner" id="priceBanner">
-    <div class="price-item">
-        <span class="price-symbol">👻 GHST</span>
-        <span class="price-value" id="ghstPrice">$0.0100</span>
-        <span class="price-change up">Mainnet</span>
-    </div>
-    <div class="price-item">
-        <span class="price-symbol">₿ BTC</span>
-        <span class="price-value" id="btcPrice">Loading...</span>
-        <span class="price-change up" id="btcChange">...</span>
-    </div>
-    <div class="price-item">
-        <span class="price-symbol">Ξ ETH</span>
-        <span class="price-value" id="ethPrice">Loading...</span>
-        <span class="price-change up" id="ethChange">...</span>
-    </div>
-    <div class="price-item">
-        <span class="price-symbol">🔶 BNB</span>
-        <span class="price-value" id="bnbPrice">Loading...</span>
-        <span class="price-change up" id="bnbChange">...</span>
-    </div>
-    <div class="price-item" style="margin-left:auto">
-        <span class="price-symbol">🕐 Last update:</span>
-        <span class="price-value" id="lastUpdate" style="font-size:0.85em">--</span>
-    </div>
-</div>
-
-<div class="container">
-
-    <div class="hero">
-        <div class="hero-title">👻 GhostCoin Block Explorer</div>
-        <div class="hero-subtitle">Privacy Blockchain — Monero/Zcash Level • Rust 🦀 • SHA-256 + zk-SNARKs</div>
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-mark">👻</div>
+        <div>
+          <div class="brand-title">GhostCoin <span class="live-pill">Live Network</span></div>
+          <div class="brand-sub">Public GHST block explorer on Railway</div>
+        </div>
+      </div>
+      <div class="topnav">
+        <a href="/api/stats">API Stats</a>
+        <a href="/api/mempool">Mempool</a>
+        <a href="#tokenomics">Tokenomics</a>
+        <a href="#network">Network</a>
+      </div>
     </div>
 
-    <!-- STATS GRID -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-icon">📦</div>
-            <div class="stat-label">Block Height</div>
-            <div class="stat-value">#{}</div>
-            <div class="stat-sub">Blocs minés</div>
+    <section class="hero">
+      <div class="panel hero-main">
+        <div class="eyebrow">Privacy chain · GHST mainnet</div>
+        <h1>GhostCoin Block Explorer</h1>
+        <div class="hero-copy">
+          A lighter, cleaner public dashboard for GhostCoin. Track the chain, monitor live supply,
+          inspect mempool activity, and connect wallets or tooling directly to the public endpoints.
         </div>
-        <div class="stat-card">
-            <div class="stat-icon">👻</div>
-            <div class="stat-label">Supply Circulant</div>
-            <div class="stat-value">{} GHST</div>
-            <div class="stat-sub">sur 50,000,000 max</div>
+        <div class="mini-grid">
+          <div class="mini">
+            <div class="label">Current height</div>
+            <div class="value">#{}</div>
+          </div>
+          <div class="mini">
+            <div class="label">Network status</div>
+            <div class="value" style="color:var(--accent-deep)">Online</div>
+          </div>
+          <div class="mini">
+            <div class="label">Block reward</div>
+            <div class="value">{} GHST</div>
+          </div>
         </div>
-        <div class="stat-card">
-            <div class="stat-icon">⛏️</div>
-            <div class="stat-label">Block Reward</div>
-            <div class="stat-value">{} GHST</div>
-            <div class="stat-sub">par bloc miné</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">📝</div>
-            <div class="stat-label">Mempool</div>
-            <div class="stat-value">{} TX</div>
-            <div class="stat-sub">en attente</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">⚡</div>
-            <div class="stat-label">Difficulté</div>
-            <div class="stat-value">{}</div>
-            <div class="stat-sub">ajustable</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">💸</div>
-            <div class="stat-label">Total Fees</div>
-            <div class="stat-value">{} GHST</div>
-            <div class="stat-sub">collectés</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">🔄</div>
-            <div class="stat-label">Total TX</div>
-            <div class="stat-value">{}</div>
-            <div class="stat-sub">transactions</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-icon">🌐</div>
-            <div class="stat-label">Réseau</div>
-            <div class="stat-value" style="color:var(--green)">🟢 Online</div>
-            <div class="stat-sub">24h/24 Railway</div>
-        </div>
-    </div>
+      </div>
 
-    <!-- CHARTS -->
-    <div class="charts-grid">
-        <div class="chart-card">
-            <div class="chart-title">📈 Prix BTC/ETH en temps réel (7 jours)</div>
-            <canvas id="priceChart" height="120"></canvas>
+      <aside class="panel hero-side">
+        <div class="section-kicker">Market snapshot</div>
+        <div class="price-card">
+          <div><strong>GHST</strong><span>Mainnet reference</span></div>
+          <div class="price-value"><div id="ghstPrice">$0.0100</div><div class="chip up">Mainnet</div></div>
         </div>
-        <div class="chart-card">
-            <div class="chart-title">🟣 Supply Distribution</div>
-            <canvas id="supplyChart" height="200"></canvas>
-            <div class="supply-bar-container" style="margin-top:20px">
-                <div class="supply-labels">
-                    <span>Miné : {} GHST</span>
-                    <span>Restant : {} GHST</span>
-                </div>
-                <div class="supply-bar-bg">
-                    <div class="supply-bar-fill" style="width:{:.2}%"></div>
-                </div>
-                <div class="supply-labels">
-                    <span>0</span>
-                    <span>{:.4}% complété</span>
-                    <span>50,000,000</span>
-                </div>
-            </div>
+        <div class="price-card">
+          <div><strong>BTC</strong><span>Bitcoin live feed</span></div>
+          <div class="price-value"><div id="btcPrice">Loading...</div><div class="chip up" id="btcChange">...</div></div>
         </div>
-    </div>
+        <div class="price-card">
+          <div><strong>ETH</strong><span>Ethereum live feed</span></div>
+          <div class="price-value"><div id="ethPrice">Loading...</div><div class="chip up" id="ethChange">...</div></div>
+        </div>
+        <div class="price-card">
+          <div><strong>BNB</strong><span>BNB live feed</span></div>
+          <div class="price-value"><div id="bnbPrice">Loading...</div><div class="chip up" id="bnbChange">...</div></div>
+        </div>
+        <div>
+          <strong>Last update</strong><br>
+          <span style="color:var(--muted)" id="lastUpdate">--</span>
+        </div>
+      </aside>
+    </section>
 
-    <!-- PRIVACY FEATURES -->
-    <div class="privacy-section">
-        <div class="chart-title">🔒 Privacy Features</div>
-        <div class="privacy-grid">
-            <div class="privacy-item">
-                <div class="privacy-item-icon">👤</div>
-                <div class="privacy-item-title">Stealth Addresses</div>
-                <div class="privacy-item-desc">Adresse unique par transaction — destinataire intraçable</div>
-            </div>
-            <div class="privacy-item">
-                <div class="privacy-item-icon">💍</div>
-                <div class="privacy-item-title">Ring Signatures</div>
-                <div class="privacy-item-desc">Signature parmi un groupe — expéditeur anonyme</div>
-            </div>
-            <div class="privacy-item">
-                <div class="privacy-item-icon">🔮</div>
-                <div class="privacy-item-title">zk-SNARKs (Groth16)</div>
-                <div class="privacy-item-desc">Preuve sans révélation — montants cachés</div>
-            </div>
-            <div class="privacy-item">
-                <div class="privacy-item-icon">🧅</div>
-                <div class="privacy-item-title">Dandelion++</div>
-                <div class="privacy-item-desc">Protection IP — origine de TX intraçable</div>
-            </div>
-            <div class="privacy-item">
-                <div class="privacy-item-icon">🛡️</div>
-                <div class="privacy-item-title">Quantum-Safe</div>
-                <div class="privacy-item-desc">CRYSTALS-Dilithium — résistant aux quantums</div>
-            </div>
-            <div class="privacy-item">
-                <div class="privacy-item-icon">🌀</div>
-                <div class="privacy-item-title">MimbleWimble</div>
-                <div class="privacy-item-desc">Compression blockchain — données minimales</div>
-            </div>
-        </div>
-    </div>
+    <section class="grid">
+      <div class="stats">
+        <article class="stat">
+          <div class="stat-top"><div class="stat-name">Circulating supply</div><div class="stat-icon">👻</div></div>
+          <div class="stat-number">{} GHST</div>
+          <div class="stat-copy">Issued on-chain so far out of a fixed {} GHST cap.</div>
+        </article>
+        <article class="stat">
+          <div class="stat-top"><div class="stat-name">Mempool</div><div class="stat-icon">🧾</div></div>
+          <div class="stat-number">{} tx</div>
+          <div class="stat-copy">Transactions waiting for confirmation in the next block.</div>
+        </article>
+        <article class="stat">
+          <div class="stat-top"><div class="stat-name">Difficulty</div><div class="stat-icon">⚒️</div></div>
+          <div class="stat-number">{}</div>
+          <div class="stat-copy">Current SHA-256 mining target difficulty.</div>
+        </article>
+        <article class="stat">
+          <div class="stat-top"><div class="stat-name">Total fees</div><div class="stat-icon">💸</div></div>
+          <div class="stat-number">{} GHST</div>
+          <div class="stat-copy">Fees already secured by accepted blocks.</div>
+        </article>
+      </div>
 
-    <!-- TOKENOMICS TABLE -->
-    <div class="table-card">
-        <div class="table-title">💎 Tokenomics</div>
+      <article class="panel content-card wide">
+        <div class="section-title">
+          <h2>Market context</h2>
+          <span>BTC and ETH for macro reference around GHST</span>
+        </div>
+        <canvas id="priceChart" height="120"></canvas>
+      </article>
+
+      <article class="panel content-card narrow">
+        <div class="section-title">
+          <h2>Supply distribution</h2>
+          <span>{:.4}% mined</span>
+        </div>
+        <canvas id="supplyChart" height="210"></canvas>
+        <div class="supply-meta">
+          <div class="progress"><div></div></div>
+          <div class="progress-legend">
+            <span>Mined: {} GHST</span>
+            <span>Remaining: {} GHST</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="features">
+        <article class="feature"><div>👤</div><strong>Stealth addresses</strong><p>Each payment can target a one-time destination, reducing recipient linkability.</p></article>
+        <article class="feature"><div>💍</div><strong>Ring signatures</strong><p>Transactions can hide the real signer inside a larger crowd.</p></article>
+        <article class="feature"><div>🔮</div><strong>zk-SNARKs</strong><p>Proof systems validate rules while revealing far less raw transaction data.</p></article>
+        <article class="feature"><div>🌿</div><strong>Dandelion++</strong><p>Broadcast propagation is shaped to make transaction origin harder to trace.</p></article>
+        <article class="feature"><div>🛡️</div><strong>Quantum-safe track</strong><p>The roadmap includes post-quantum ideas for longer-term signature resilience.</p></article>
+        <article class="feature"><div>🌊</div><strong>MimbleWimble ideas</strong><p>Compression and minimal on-chain data remain part of the broader design story.</p></article>
+      </div>
+
+      <article class="panel table-card" id="tokenomics">
+        <div class="section-title">
+          <h2>Tokenomics</h2>
+          <span>Total transactions: {}</span>
+        </div>
         <table>
-            <tr><th>Paramètre</th><th>Valeur</th></tr>
-            <tr><td>Nom</td><td>GhostCoin</td></tr>
-            <tr><td>Symbole</td><td><span style="background:var(--purple);padding:2px 8px;border-radius:10px;font-size:0.85em">GHST</span></td></tr>
-            <tr><td>Supply Maximum</td><td>50,000,000 GHST</td></tr>
-            <tr><td>Distribution</td><td>100% Minage (0% premine)</td></tr>
-            <tr><td>Récompense initiale</td><td>65 GHST / bloc</td></tr>
-            <tr><td>Halving</td><td>Tous les 210,000 blocs</td></tr>
-            <tr><td>Algorithme PoW</td><td>SHA-256</td></tr>
-            <tr><td>Courbe cryptographique</td><td>Ristretto255 + BLS12-381</td></tr>
-            <tr><td>Langage</td><td>Rust 🦀</td></tr>
-            <tr><td>Infrastructure</td><td>Railway ☁️</td></tr>
+          <tr><th>Field</th><th>Value</th></tr>
+          <tr><td>Name</td><td>GhostCoin</td></tr>
+          <tr><td>Symbol</td><td>GHST</td></tr>
+          <tr><td>Max supply</td><td>{} GHST</td></tr>
+          <tr><td>Current reward</td><td>{} GHST per block</td></tr>
+          <tr><td>Consensus</td><td>Proof of Work, SHA-256</td></tr>
+          <tr><td>Halving interval</td><td>210,000 blocks</td></tr>
+          <tr><td>Infrastructure</td><td>Rust + Railway</td></tr>
+          <tr><td>Status</td><td>Public explorer online</td></tr>
         </table>
-    </div>
+      </article>
 
-    <!-- NODE INFO -->
-    <div class="node-card">
-        <div class="chart-title">🌐 Connexion au Réseau GhostCoin</div>
-        <p style="color:var(--muted);margin:10px 0">Connecte ton wallet ou ton noeud :</p>
-        <div class="node-address">TCP → shuttle.proxy.rlwy.net:48191</div>
-        <div class="node-address" style="margin-top:8px">HTTP → ghostcoin-production.up.railway.app</div>
-        <div class="node-address" style="margin-top:8px">API → ghostcoin-production.up.railway.app/api/stats</div>
-    </div>
+      <article class="panel table-card" id="network">
+        <div class="section-title">
+          <h2>Network endpoints</h2>
+          <span>Use these for wallets, nodes, or dashboards</span>
+        </div>
+        <div class="endpoint-list">
+          <div class="endpoint">TCP → shuttle.proxy.rlwy.net:48191</div>
+          <div class="endpoint">HTTP → ghostcoin-production.up.railway.app</div>
+          <div class="endpoint">API → ghostcoin-production.up.railway.app/api/stats</div>
+          <div class="endpoint">Mempool API → ghostcoin-production.up.railway.app/api/mempool</div>
+        </div>
+      </article>
+    </section>
 
-</div>
+    <footer class="footer">
+      <div><strong>GhostCoin (GHST)</strong><br>Public privacy-chain explorer with automatic refresh every 30 seconds.</div>
+      <div class="footer-links">
+        <a href="/api/stats">API Stats</a>
+        <a href="/api/mempool">Mempool</a>
+      </div>
+    </footer>
+  </div>
 
-<div class="footer">
-    <div>👻 <strong>GhostCoin (GHST)</strong> — Privacy Blockchain</div>
-    <div style="margin-top:5px">Built with Rust 🦀 | Powered by Railway 🚂 | © 2026 GhostCoin</div>
-    <div class="footer-links">
-        <a href="/api/stats" class="footer-link">API Stats</a>
-        <a href="/api/mempool" class="footer-link">Mempool</a>
-    </div>
-    <div style="margin-top:10px;font-size:0.8em">Auto-refresh toutes les 30 secondes</div>
-</div>
-
-<script>
-// ==========================================
-// PRIX EN TEMPS RÉEL VIA COINGECKO
-// ==========================================
-async function fetchPrices() {{
-    try {{
-        const res = await fetch(
-            'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true'
-        );
+  <script>
+    async function fetchPrices() {{
+      try {{
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true');
         const data = await res.json();
 
-        // BTC
-        const btc = data.bitcoin;
-        document.getElementById('btcPrice').textContent = '$' + btc.usd.toLocaleString();
-        const btcChg = btc.usd_24h_change.toFixed(2);
-        const btcEl = document.getElementById('btcChange');
-        btcEl.textContent = (btcChg > 0 ? '+' : '') + btcChg + '%';
-        btcEl.className = 'price-change ' + (btcChg > 0 ? 'up' : 'down');
+        function paint(key, priceId, changeId) {{
+          const item = data[key];
+          const change = item.usd_24h_change.toFixed(2);
+          document.getElementById(priceId).textContent = '$' + item.usd.toLocaleString();
+          const chip = document.getElementById(changeId);
+          chip.textContent = (change > 0 ? '+' : '') + change + '%';
+          chip.className = 'chip ' + (change > 0 ? 'up' : 'down');
+        }}
 
-        // ETH
-        const eth = data.ethereum;
-        document.getElementById('ethPrice').textContent = '$' + eth.usd.toLocaleString();
-        const ethChg = eth.usd_24h_change.toFixed(2);
-        const ethEl = document.getElementById('ethChange');
-        ethEl.textContent = (ethChg > 0 ? '+' : '') + ethChg + '%';
-        ethEl.className = 'price-change ' + (ethChg > 0 ? 'up' : 'down');
-
-        // BNB
-        const bnb = data.binancecoin;
-        document.getElementById('bnbPrice').textContent = '$' + bnb.usd.toLocaleString();
-        const bnbChg = bnb.usd_24h_change.toFixed(2);
-        const bnbEl = document.getElementById('bnbChange');
-        bnbEl.textContent = (bnbChg > 0 ? '+' : '') + bnbChg + '%';
-        bnbEl.className = 'price-change ' + (bnbChg > 0 ? 'up' : 'down');
-
-        document.getElementById('lastUpdate').textContent =
-            new Date().toLocaleTimeString();
-
-        return {{ btc: btc.usd, eth: eth.usd }};
-    }} catch(e) {{
+        paint('bitcoin', 'btcPrice', 'btcChange');
+        paint('ethereum', 'ethPrice', 'ethChange');
+        paint('binancecoin', 'bnbPrice', 'bnbChange');
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+      }} catch (e) {{
         console.log('Price fetch error:', e);
-        return null;
+      }}
     }}
-}}
 
-// ==========================================
-// GRAPHIQUE PRIX 7 JOURS
-// ==========================================
-async function fetchPriceHistory() {{
-    try {{
+    async function fetchPriceHistory() {{
+      try {{
         const [btcRes, ethRes] = await Promise.all([
-            fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=7&interval=daily'),
-            fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=7&interval=daily'),
+          fetch('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=7&interval=daily'),
+          fetch('https://api.coingecko.com/api/v3/coins/ethereum/market_chart?vs_currency=usd&days=7&interval=daily')
         ]);
         const btcData = await btcRes.json();
         const ethData = await ethRes.json();
-
-        const labels = btcData.prices.map(p => {{
-            const d = new Date(p[0]);
-            return d.toLocaleDateString('fr-FR', {{month:'short', day:'numeric'}});
+        const labels = btcData.prices.map(point => {{
+          const date = new Date(point[0]);
+          return date.toLocaleDateString('fr-FR', {{ month: 'short', day: 'numeric' }});
         }});
 
         const ctx = document.getElementById('priceChart').getContext('2d');
         new Chart(ctx, {{
-            type: 'line',
-            data: {{
-                labels,
-                datasets: [
-                    {{
-                        label: 'BTC ($)',
-                        data: btcData.prices.map(p => p[1]),
-                        borderColor: '#f59e0b',
-                        backgroundColor: 'rgba(245,158,11,0.1)',
-                        yAxisID: 'y',
-                        tension: 0.4,
-                        fill: true,
-                    }},
-                    {{
-                        label: 'ETH ($)',
-                        data: ethData.prices.map(p => p[1]),
-                        borderColor: '#60a5fa',
-                        backgroundColor: 'rgba(96,165,250,0.1)',
-                        yAxisID: 'y1',
-                        tension: 0.4,
-                        fill: true,
-                    }},
-                ]
+          type: 'line',
+          data: {{
+            labels,
+            datasets: [
+              {{
+                label: 'BTC',
+                data: btcData.prices.map(point => point[1]),
+                borderColor: '#173540',
+                backgroundColor: 'rgba(23,53,64,0.08)',
+                tension: 0.35,
+                fill: true,
+                borderWidth: 2
+              }},
+              {{
+                label: 'ETH',
+                data: ethData.prices.map(point => point[1]),
+                borderColor: '#0f9d74',
+                backgroundColor: 'rgba(15,157,116,0.10)',
+                tension: 0.35,
+                fill: true,
+                borderWidth: 2
+              }}
+            ]
+          }},
+          options: {{
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {{ mode: 'index', intersect: false }},
+            plugins: {{
+              legend: {{ labels: {{ color: '#15251f' }} }}
             }},
-            options: {{
-                responsive: true,
-                interaction: {{ mode: 'index', intersect: false }},
-                plugins: {{
-                    legend: {{ labels: {{ color: '#e2e8f0' }} }},
-                }},
-                scales: {{
-                    x: {{ ticks: {{ color: '#64748b' }}, grid: {{ color: '#1a1a3e' }} }},
-                    y: {{
-                        type: 'linear', position: 'left',
-                        ticks: {{ color: '#f59e0b', callback: v => '$' + v.toLocaleString() }},
-                        grid: {{ color: '#1a1a3e' }},
-                    }},
-                    y1: {{
-                        type: 'linear', position: 'right',
-                        ticks: {{ color: '#60a5fa', callback: v => '$' + v.toLocaleString() }},
-                        grid: {{ drawOnChartArea: false }},
-                    }},
-                }},
+            scales: {{
+              x: {{ ticks: {{ color: '#60716d' }}, grid: {{ color: 'rgba(20,35,31,0.08)' }} }},
+              y: {{
+                ticks: {{ color: '#60716d', callback: value => '$' + Number(value).toLocaleString() }},
+                grid: {{ color: 'rgba(20,35,31,0.08)' }}
+              }}
             }}
+          }}
         }});
-    }} catch(e) {{
+      }} catch (e) {{
         console.log('Chart error:', e);
+      }}
     }}
-}}
 
-// ==========================================
-// GRAPHIQUE SUPPLY DONUT
-// ==========================================
-function initSupplyChart() {{
-    const minted  = {};
-    const remaining = 50000000 - minted;
-    const ctx = document.getElementById('supplyChart').getContext('2d');
-    new Chart(ctx, {{
+    function initSupplyChart() {{
+      const minted = {};
+      const remaining = {} - minted;
+      const ctx = document.getElementById('supplyChart').getContext('2d');
+      new Chart(ctx, {{
         type: 'doughnut',
         data: {{
-            labels: ['Miné', 'Restant'],
-            datasets: [{{
-                data: [minted, remaining],
-                backgroundColor: ['#7c3aed', '#1a1a3e'],
-                borderColor: ['#a855f7', '#2d2d5e'],
-                borderWidth: 2,
-            }}]
+          labels: ['Mined', 'Remaining'],
+          datasets: [{{
+            data: [minted, remaining],
+            backgroundColor: ['#0f9d74', '#dfe8e4'],
+            borderColor: ['#0b6b55', '#c9d7d1'],
+            borderWidth: 1
+          }}]
         }},
         options: {{
-            responsive: true,
-            plugins: {{
-                legend: {{
-                    labels: {{ color: '#e2e8f0' }},
-                    position: 'bottom',
-                }},
-            }},
-            cutout: '70%',
+          responsive: true,
+          plugins: {{
+            legend: {{ position: 'bottom', labels: {{ color: '#15251f' }} }}
+          }},
+          cutout: '72%'
         }}
-    }});
-}}
+      }});
+    }}
 
-// ==========================================
-// INIT
-// ==========================================
-fetchPrices();
-fetchPriceHistory();
-initSupplyChart();
-
-// Refresh prix toutes les 60 secondes
-setInterval(fetchPrices, 60000);
-
-// Refresh page toutes les 30 secondes
-setTimeout(() => location.reload(), 30000);
-</script>
-
+    fetchPrices();
+    fetchPriceHistory();
+    initSupplyChart();
+    setInterval(fetchPrices, 60000);
+    setTimeout(() => location.reload(), 30000);
+  </script>
 </body>
-</html>"#,
+</html>"##,
+        supply_pct,
         state.block_height,
-        state.minted_supply,
         state.current_reward(),
+        state.minted_supply,
+        max_supply,
         mempool.pending_count(),
         state.difficulty,
         state.total_fees,
+        supply_pct,
+        state.minted_supply,
+        remaining_supply,
         state.total_tx_count,
+        max_supply,
+        state.current_reward(),
         state.minted_supply,
-        50_000_000u64.saturating_sub(state.minted_supply),
-        state.minted_supply as f64 / 500_000.0,
-        state.minted_supply as f64 / 500_000.0,
-        state.minted_supply,
+        max_supply
     ))
 }
 
 async fn api_stats() -> Json<Value> {
-    let state   = ChainState::load();
+    let state = ChainState::load();
     let mempool = Mempool::load();
     Json(json!({
-        "name":          "GhostCoin",
-        "symbol":        "GHST",
-        "block_height":  state.block_height,
+        "name": "GhostCoin",
+        "symbol": "GHST",
+        "block_height": state.block_height,
         "minted_supply": state.minted_supply,
-        "max_supply":    50_000_000,
-        "block_reward":  state.current_reward(),
-        "difficulty":    state.difficulty,
-        "total_tx":      state.total_tx_count,
-        "total_fees":    state.total_fees,
+        "max_supply": 50_000_000,
+        "block_reward": state.current_reward(),
+        "difficulty": state.difficulty,
+        "total_tx": state.total_tx_count,
+        "total_fees": state.total_fees,
         "mempool_count": mempool.pending_count(),
-        "last_hash":     state.last_block_hash,
-        "status":        "online",
-        "node_tcp":      "shuttle.proxy.rlwy.net:48191",
-        "explorer":      "ghostcoin-production.up.railway.app",
+        "last_hash": state.last_block_hash,
+        "status": "online",
+        "node_tcp": "shuttle.proxy.rlwy.net:48191",
+        "explorer": "ghostcoin-production.up.railway.app",
     }))
 }
 
 async fn api_mempool() -> Json<Value> {
     let mempool = Mempool::load();
-    let txs: Vec<Value> = mempool.sorted_by_priority()
-        .iter().take(20)
-        .map(|tx| json!({
-            "tx_id":    tx.tx_id,
-            "amount":   tx.amount,
-            "fee":      tx.fee,
-            "fee_rate": tx.fee_rate,
-            "priority": tx.priority_label(),
-        }))
+    let txs: Vec<Value> = mempool
+        .sorted_by_priority()
+        .iter()
+        .take(20)
+        .map(|tx| {
+            json!({
+                "tx_id": tx.tx_id,
+                "amount": tx.amount,
+                "fee": tx.fee,
+                "fee_rate": tx.fee_rate,
+                "priority": tx.priority_label(),
+            })
+        })
         .collect();
+
     Json(json!({
-        "count":        mempool.pending_count(),
-        "total_fees":   mempool.total_fees(),
+        "count": mempool.pending_count(),
+        "total_fees": mempool.total_fees(),
         "transactions": txs,
     }))
 }
 
 pub async fn start_web_server_on_port(port: u16) {
     let app = Router::new()
-        .route("/",            get(home))
-        .route("/api/stats",   get(api_stats))
+        .route("/", get(home))
+        .route("/api/stats", get(api_stats))
         .route("/api/mempool", get(api_mempool));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    println!("🌐 Web server démarré sur port {}", port);
+    println!("Web server demarre sur port {}", port);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
