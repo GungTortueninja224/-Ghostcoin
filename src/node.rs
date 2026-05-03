@@ -106,6 +106,9 @@ pub async fn run_node(state: NodeState) {
 }
 
 async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState) {
+    // Record the actual remote endpoint instead of assuming localhost.
+    state.add_peer(&peer_addr);
+
     // Read full payload instead of a fixed 4KB read to avoid truncating NewBlockFull JSON.
     let mut buf = Vec::new();
     match socket.read_to_end(&mut buf).await {
@@ -130,10 +133,8 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
 
 async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMessage> {
     match msg {
-        NodeMessage::Hello { from_port } => {
-            let peer = format!("127.0.0.1:{}", from_port);
-            state.add_peer(&peer);
-            println!("Node {}: hello from {}", state.port, from_port);
+        NodeMessage::Hello { from_port: _ } => {
+            println!("Node {}: hello received", state.port);
             Some(NodeMessage::Pong)
         }
         NodeMessage::NewTx { tx_data } => {
@@ -192,6 +193,15 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
         NodeMessage::GetBlocksSince { from_index, limit } => {
             let blocks = state.chain.get_blocks_since(from_index, limit);
             Some(NodeMessage::Blocks { blocks })
+        }
+        NodeMessage::Blocks { blocks } => {
+            let added = state.chain.merge_blocks_from_network(blocks);
+            if added > 0 {
+                let tip = state.chain.last_index();
+                state.set_block_count(tip);
+                println!("Node {}: batch sync integrated (tip #{})", state.port, tip);
+            }
+            None
         }
         NodeMessage::Ping => Some(NodeMessage::Pong),
         _ => None,

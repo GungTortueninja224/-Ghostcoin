@@ -245,33 +245,17 @@ impl ChainSync {
             return 0;
         }
 
-        let mut from_index = last_index;
-        let mut total_sent = 0usize;
-
-        loop {
-            let blocks = self.chain.get_blocks_since(from_index, SYNC_CHUNK_MAX);
-            if blocks.is_empty() {
-                break;
-            }
-
-            for block in blocks {
-                from_index = block.index;
-                send_to_node_fire_and_forget(
-                    peer,
-                    &NodeMessage::NewBlockFull {
-                        block,
-                    },
-                )
-                .await;
-                total_sent = total_sent.saturating_add(1);
-            }
-
-            if from_index >= local_tip {
-                break;
-            }
+        // Send the full ordered suffix in one payload so the receiver can
+        // integrate it sequentially after a restart.
+        let blocks = self.chain.get_blocks_since(last_index, SYNC_CHUNK_MAX);
+        let count = blocks.len();
+        if count == 0 {
+            return 0;
         }
 
-        total_sent
+        send_to_node_fire_and_forget(peer, &NodeMessage::Blocks { blocks }).await;
+        println!("Rattrapage: {} bloc(s) envoyes a {}", count, peer);
+        count
     }
 
     pub async fn push_missing_blocks_to_peers(&self) -> usize {

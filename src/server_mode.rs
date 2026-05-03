@@ -1,7 +1,7 @@
 use crate::chain_state::ChainState;
 use crate::config::GhostCoinConfig;
 use crate::node::{run_node, NodeState};
-use crate::sync::SharedChain;
+use crate::sync::{ChainSync, SharedChain};
 use crate::web_server::start_web_server_on_port;
 use std::fs;
 use std::path::Path;
@@ -75,6 +75,20 @@ pub async fn run_server_mode() {
         run_node(n).await;
     });
     println!("ðŸŒ Noeud P2P TCP demarre sur port {}", p2p_port);
+
+    // Bootstrap: pull depuis les peers connus au demarrage.
+    let bootstrap_chain = node.chain.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        let sync = ChainSync::new_with_chain(
+            bootstrap_chain,
+            vec!["shuttle.proxy.rlwy.net:48191".to_string()],
+        );
+        let added = sync.sync_from_peers().await;
+        if added > 0 {
+            println!("Bootstrap: {} bloc(s) recuperes depuis les peers", added);
+        }
+    });
 
     // Keep explorer available. If PORT conflicts with P2P, move web server.
     let railway_port = env_port("PORT").unwrap_or(8001);
