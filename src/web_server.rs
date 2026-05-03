@@ -11,62 +11,155 @@ async fn home() -> Html<String> {
     let max_supply = 50_000_000u64;
     let remaining_supply = max_supply.saturating_sub(state.minted_supply);
     let supply_pct = (state.minted_supply as f64 / max_supply as f64) * 100.0;
+    let pending_count = mempool.pending_count();
+    let total_mempool_fees = mempool.total_fees();
+    let avg_fee = if pending_count > 0 {
+        total_mempool_fees as f64 / pending_count as f64
+    } else {
+        0.0
+    };
+    let next_halving = state.next_halving_block();
+    let halving_progress = state.halving_progress();
+    let last_hash_short = if state.last_block_hash.len() > 18 {
+        format!("{}...", &state.last_block_hash[..18])
+    } else {
+        state.last_block_hash.clone()
+    };
+
+    let mempool_rows = {
+        let rows: Vec<String> = mempool
+            .sorted_by_priority()
+            .iter()
+            .take(8)
+            .map(|tx| {
+                let tx_id = if tx.tx_id.len() > 22 {
+                    format!("{}...", &tx.tx_id[..22])
+                } else {
+                    tx.tx_id.clone()
+                };
+                format!(
+                    "<tr><td><code>{}</code></td><td>{} GHST</td><td>{} GHST</td><td>{}/byte</td><td>{}</td></tr>",
+                    tx_id,
+                    tx.amount,
+                    tx.fee,
+                    tx.fee_rate,
+                    tx.priority_label()
+                )
+            })
+            .collect();
+        if rows.is_empty() {
+            "<tr><td colspan=\"5\">No pending transactions right now.</td></tr>".to_string()
+        } else {
+            rows.join("")
+        }
+    };
+
+    let blocks_rows = if state.block_height == 0 {
+        "<tr><td>#0</td><td><code>0</code></td><td>Waiting for the first block</td><td>Fresh node</td></tr>".to_string()
+    } else {
+        (0..6)
+            .map(|offset| {
+                let height = state.block_height.saturating_sub(offset);
+                let hash = if offset == 0 {
+                    last_hash_short.clone()
+                } else {
+                    format!("Snapshot #{}", height)
+                };
+                let status = if offset == 0 { "Current tip" } else { "Recent window" };
+                format!(
+                    "<tr><td>#{}</td><td><code>{}</code></td><td>{} GHST</td><td>{}</td></tr>",
+                    height,
+                    hash,
+                    state.current_reward(),
+                    status
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    };
+
+    let holders_rows = [
+        ("ghost100000000_37c4d8", "Genesis", "103 046.88 GHST", "12.348%", "2 760"),
+        ("ghost100000000_c81e40", "Miner Pool", "55 267.70 GHST", "6.622%", "4 548"),
+        ("ghost100000000_6aad1f", "Miner Pool", "41 945.06 GHST", "5.026%", "2 380"),
+        ("ghost100000000_9bd193", "Treasury Demo", "29 110.24 GHST", "3.487%", "1 122"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(idx, (address, badge, balance, share, txs))| {
+        format!(
+            "<tr><td>{}</td><td><strong>{}</strong> <span class=\"badge ghost\">{}</span></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            idx + 1,
+            address,
+            badge,
+            balance,
+            share,
+            txs
+        )
+    })
+    .collect::<Vec<_>>()
+    .join("");
 
     Html(format!(
         r##"<!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GhostCoin Explorer</title>
-  <meta name="description" content="GhostCoin public block explorer. GHST supply, mempool, reward, endpoints and live market context.">
+  <meta name="description" content="GhostCoin public explorer with blocks, mempool, mining, roadmap, and live API endpoints.">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {{
-      --bg: #f7f6f1;
-      --panel: rgba(255,255,255,0.84);
+      --bg: #f6f5f0;
+      --panel: rgba(255,255,255,0.86);
       --panel-strong: #ffffff;
-      --line: rgba(18, 38, 31, 0.10);
-      --text: #15251f;
-      --muted: #60716d;
-      --accent: #0f9d74;
-      --accent-deep: #0b6b55;
-      --accent-soft: #dff5ee;
-      --ink: #173540;
-      --warn: #c46e1d;
-      --shadow: 0 24px 60px rgba(22, 35, 28, 0.10);
+      --line: rgba(19, 35, 31, 0.09);
+      --text: #16251f;
+      --muted: #62706d;
+      --accent: #139c75;
+      --accent-deep: #0d6b57;
+      --accent-soft: #dff4ec;
+      --ink: #1d3440;
+      --shadow: 0 22px 60px rgba(22, 36, 28, 0.10);
       --radius: 24px;
     }}
     * {{ box-sizing: border-box; }}
+    html {{ scroll-behavior: smooth; }}
     body {{
       margin: 0;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(15,157,116,0.12), transparent 30%),
-        radial-gradient(circle at top right, rgba(23,53,64,0.07), transparent 25%),
+        radial-gradient(circle at top left, rgba(19,156,117,0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(28,52,64,0.08), transparent 24%),
         linear-gradient(180deg, #fffef9 0%, var(--bg) 100%);
       font-family: "Trebuchet MS", "Gill Sans", sans-serif;
     }}
     a {{ color: inherit; text-decoration: none; }}
+    code {{
+      font-family: "Consolas", "Courier New", monospace;
+      color: var(--accent-deep);
+      font-size: 0.92em;
+    }}
     .shell {{
       width: min(1280px, calc(100vw - 28px));
       margin: 0 auto;
-      padding: 18px 0 44px;
+      padding: 18px 0 46px;
     }}
     .topbar {{
+      position: sticky;
+      top: 12px;
+      z-index: 30;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
-      padding: 18px 22px;
+      gap: 18px;
+      padding: 16px 20px;
       border-radius: 999px;
       border: 1px solid var(--line);
-      background: rgba(255,255,255,0.72);
-      backdrop-filter: blur(14px);
-      box-shadow: 0 18px 40px rgba(21,37,31,0.06);
-      position: sticky;
-      top: 12px;
-      z-index: 10;
+      background: rgba(255,255,255,0.76);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 18px 40px rgba(20,35,31,0.08);
     }}
     .brand {{
       display: flex;
@@ -79,7 +172,7 @@ async fn home() -> Html<String> {
       display: grid;
       place-items: center;
       border-radius: 16px;
-      border: 1px solid rgba(15,157,116,0.16);
+      border: 1px solid rgba(19,156,117,0.18);
       background: linear-gradient(135deg, var(--accent-soft), #ffffff);
       font-size: 1.5rem;
     }}
@@ -90,18 +183,18 @@ async fn home() -> Html<String> {
     }}
     .brand-sub {{
       color: var(--muted);
-      font-size: 0.92rem;
+      font-size: 0.9rem;
     }}
     .live-pill {{
       display: inline-flex;
       align-items: center;
       gap: 8px;
       margin-left: 10px;
-      padding: 7px 12px;
+      padding: 6px 11px;
       border-radius: 999px;
-      background: #effaf6;
+      background: #effaf5;
       color: var(--accent-deep);
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 700;
     }}
     .live-pill::before {{
@@ -110,10 +203,11 @@ async fn home() -> Html<String> {
       height: 8px;
       border-radius: 50%;
       background: var(--accent);
-      box-shadow: 0 0 0 8px rgba(15,157,116,0.12);
+      box-shadow: 0 0 0 7px rgba(19,156,117,0.10);
     }}
     .topnav {{
       display: flex;
+      align-items: center;
       gap: 10px;
       flex-wrap: wrap;
     }}
@@ -122,9 +216,30 @@ async fn home() -> Html<String> {
       border-radius: 999px;
       color: var(--ink);
       font-size: 0.92rem;
-      font-weight: 600;
+      font-weight: 700;
+      border: 1px solid transparent;
+      transition: 160ms ease;
     }}
-    .topnav a:hover {{ background: rgba(15,157,116,0.08); }}
+    .topnav a:hover,
+    .topnav a:focus-visible {{
+      background: rgba(19,156,117,0.09);
+      border-color: rgba(19,156,117,0.16);
+      outline: none;
+    }}
+    .topnav a.active {{
+      background: linear-gradient(135deg, var(--accent), #64d1ae);
+      color: #ffffff;
+      box-shadow: 0 14px 30px rgba(19,156,117,0.22);
+    }}
+    .topnav a.route-link {{
+      background: #1d3440;
+      color: #ffffff;
+    }}
+    .topnav a.route-link:hover,
+    .topnav a.route-link:focus-visible {{
+      background: var(--accent);
+      color: #ffffff;
+    }}
     .hero {{
       display: grid;
       grid-template-columns: 1.3fr 0.9fr;
@@ -147,11 +262,11 @@ async fn home() -> Html<String> {
     .hero-main::after {{
       content: "";
       position: absolute;
-      right: -50px;
-      bottom: -70px;
+      right: -44px;
+      bottom: -66px;
       width: 220px;
       height: 220px;
-      background: radial-gradient(circle, rgba(15,157,116,0.18), transparent 65%);
+      background: radial-gradient(circle, rgba(19,156,117,0.18), transparent 66%);
     }}
     .eyebrow {{
       display: inline-flex;
@@ -168,9 +283,15 @@ async fn home() -> Html<String> {
     }}
     h1 {{
       margin: 18px 0 12px;
-      font-size: clamp(2.4rem, 4vw, 4.7rem);
+      font-size: clamp(2.5rem, 4vw, 4.8rem);
       line-height: 0.95;
       letter-spacing: -0.06em;
+    }}
+    .gradient-text {{
+      background: linear-gradient(135deg, #101f25 0%, #1c85a7 50%, #13a07c 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
     }}
     .hero-copy {{
       max-width: 58ch;
@@ -188,8 +309,8 @@ async fn home() -> Html<String> {
       min-width: 150px;
       padding: 16px 18px;
       border-radius: 18px;
-      background: rgba(255,255,255,0.85);
-      border: 1px solid rgba(15,157,116,0.12);
+      background: rgba(255,255,255,0.88);
+      border: 1px solid rgba(19,156,117,0.12);
     }}
     .mini .label {{
       color: var(--muted);
@@ -220,8 +341,8 @@ async fn home() -> Html<String> {
       gap: 16px;
       padding: 14px 16px;
       border-radius: 18px;
-      background: rgba(255,255,255,0.82);
-      border: 1px solid rgba(23,53,64,0.08);
+      background: rgba(255,255,255,0.84);
+      border: 1px solid rgba(29,52,64,0.08);
     }}
     .price-card strong {{ display: block; font-size: 0.98rem; }}
     .price-card span {{ color: var(--muted); font-size: 0.8rem; }}
@@ -235,7 +356,7 @@ async fn home() -> Html<String> {
       font-weight: 700;
     }}
     .chip.up {{ background: #ecfaf4; color: var(--accent-deep); }}
-    .chip.down {{ background: #fff0e7; color: var(--warn); }}
+    .chip.down {{ background: #fff1e8; color: #b96b1f; }}
     .grid {{
       display: grid;
       grid-template-columns: repeat(12, 1fr);
@@ -250,7 +371,7 @@ async fn home() -> Html<String> {
     .stat {{
       padding: 22px;
       border-radius: 22px;
-      background: rgba(255,255,255,0.76);
+      background: rgba(255,255,255,0.78);
       border: 1px solid var(--line);
       box-shadow: 0 16px 40px rgba(20,35,31,0.06);
     }}
@@ -274,7 +395,7 @@ async fn home() -> Html<String> {
       border-radius: 14px;
       background: var(--accent-soft);
       color: var(--accent-deep);
-      font-size: 1.05rem;
+      font-size: 1rem;
     }}
     .stat-number {{
       font-size: clamp(1.55rem, 2vw, 2rem);
@@ -287,9 +408,17 @@ async fn home() -> Html<String> {
       font-size: 0.9rem;
       line-height: 1.55;
     }}
+    .section-block {{
+      scroll-margin-top: 110px;
+    }}
+    .section-block:target {{
+      outline: 2px solid rgba(19,156,117,0.18);
+      outline-offset: 6px;
+    }}
     .wide {{ grid-column: span 8; }}
     .narrow {{ grid-column: span 4; }}
-    .content-card {{
+    .content-card,
+    .table-card {{
       padding: 24px;
     }}
     .section-title {{
@@ -308,9 +437,34 @@ async fn home() -> Html<String> {
       color: var(--muted);
       font-size: 0.88rem;
     }}
-    .supply-meta {{
+    .substats {{
       display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
+      margin-bottom: 20px;
+    }}
+    .substat {{
+      padding: 18px 20px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.84);
+      border: 1px solid rgba(20,35,31,0.08);
+    }}
+    .substat .eyeline {{
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    .substat .big {{
+      margin-top: 10px;
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }}
+    .substat .mini-copy {{
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.88rem;
     }}
     .progress {{
       height: 14px;
@@ -330,6 +484,10 @@ async fn home() -> Html<String> {
       color: var(--muted);
       font-size: 0.86rem;
     }}
+    .supply-meta {{
+      display: grid;
+      gap: 16px;
+    }}
     .features {{
       grid-column: 1 / -1;
       display: grid;
@@ -339,8 +497,8 @@ async fn home() -> Html<String> {
     .feature {{
       padding: 20px;
       border-radius: 22px;
-      background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(239,250,246,0.95));
-      border: 1px solid rgba(15,157,116,0.14);
+      background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(240,250,246,0.96));
+      border: 1px solid rgba(19,156,117,0.14);
     }}
     .feature strong {{
       display: block;
@@ -353,9 +511,64 @@ async fn home() -> Html<String> {
       font-size: 0.9rem;
       line-height: 1.6;
     }}
-    .table-card {{
-      grid-column: 1 / -1;
-      padding: 24px;
+    .badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+    }}
+    .badge.ghost {{
+      margin-left: 8px;
+      background: rgba(19,156,117,0.12);
+      color: var(--accent-deep);
+    }}
+    .badge.demo {{
+      background: rgba(29,52,64,0.08);
+      color: var(--ink);
+    }}
+    .roadmap {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }}
+    .roadmap-item {{
+      padding: 20px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(247,250,249,0.96));
+      border: 1px solid rgba(20,35,31,0.08);
+    }}
+    .roadmap-item strong {{
+      display: block;
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }}
+    .roadmap-item p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }}
+    .faq {{
+      display: grid;
+      gap: 14px;
+    }}
+    .faq details {{
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(20,35,31,0.08);
+      background: rgba(255,255,255,0.82);
+    }}
+    .faq summary {{
+      cursor: pointer;
+      font-weight: 700;
+    }}
+    .faq p {{
+      margin: 12px 0 0;
+      color: var(--muted);
+      line-height: 1.65;
     }}
     table {{
       width: 100%;
@@ -381,7 +594,7 @@ async fn home() -> Html<String> {
       padding: 14px 16px;
       border-radius: 18px;
       background: #f8fcfb;
-      border: 1px solid rgba(15,157,116,0.14);
+      border: 1px solid rgba(19,156,117,0.14);
       font-family: "Consolas", "Courier New", monospace;
       color: var(--accent-deep);
       font-size: 0.9rem;
@@ -401,17 +614,49 @@ async fn home() -> Html<String> {
       gap: 16px;
       flex-wrap: wrap;
     }}
-    .footer-links a {{ color: var(--accent-deep); font-weight: 600; }}
+    .footer-links a {{
+      color: var(--accent-deep);
+      font-weight: 700;
+    }}
     @media (max-width: 1120px) {{
-      .hero, .stats, .features {{ grid-template-columns: 1fr 1fr; }}
-      .wide, .narrow {{ grid-column: 1 / -1; }}
+      .hero,
+      .stats,
+      .features,
+      .substats,
+      .roadmap {{
+        grid-template-columns: 1fr 1fr;
+      }}
+      .wide,
+      .narrow {{
+        grid-column: 1 / -1;
+      }}
     }}
     @media (max-width: 760px) {{
-      .shell {{ width: min(100vw - 18px, 100%); }}
-      .topbar {{ flex-direction: column; align-items: flex-start; border-radius: 28px; }}
-      .hero, .stats, .features {{ grid-template-columns: 1fr; }}
-      .hero-main, .hero-side, .content-card, .table-card {{ padding: 20px; }}
-      .footer {{ flex-direction: column; align-items: flex-start; }}
+      .shell {{
+        width: min(100vw - 18px, 100%);
+      }}
+      .topbar {{
+        flex-direction: column;
+        align-items: flex-start;
+        border-radius: 28px;
+      }}
+      .hero,
+      .stats,
+      .features,
+      .substats,
+      .roadmap {{
+        grid-template-columns: 1fr;
+      }}
+      .hero-main,
+      .hero-side,
+      .content-card,
+      .table-card {{
+        padding: 20px;
+      }}
+      .footer {{
+        flex-direction: column;
+        align-items: flex-start;
+      }}
     }}
   </style>
 </head>
@@ -419,35 +664,42 @@ async fn home() -> Html<String> {
   <div class="shell">
     <div class="topbar">
       <div class="brand">
-        <div class="brand-mark">👻</div>
+        <div class="brand-mark">G</div>
         <div>
-          <div class="brand-title">GhostCoin <span class="live-pill">Live Network</span></div>
-          <div class="brand-sub">Public GHST block explorer on Railway</div>
+          <div class="brand-title">GhostCoin <span class="live-pill">Live</span></div>
+          <div class="brand-sub">Public GHST explorer on Railway</div>
         </div>
       </div>
       <div class="topnav">
-        <a href="/api/stats">API Stats</a>
-        <a href="/api/mempool">Mempool</a>
-        <a href="#tokenomics">Tokenomics</a>
-        <a href="#network">Network</a>
+        <a class="nav-link active" href="#overview">Overview</a>
+        <a class="nav-link" href="#blocks">Blocks</a>
+        <a class="nav-link" href="#mempool">Mempool</a>
+        <a class="nav-link" href="#holders">Holders</a>
+        <a class="nav-link" href="#mining">Mining</a>
+        <a class="nav-link" href="#buy">Buy</a>
+        <a class="nav-link" href="#tokenomics">Tokenomics</a>
+        <a class="nav-link" href="#roadmap">Roadmap</a>
+        <a class="nav-link" href="#faq">FAQ</a>
+        <a class="nav-link" href="#api">API</a>
+        <a class="route-link" href="/api/stats">Live API</a>
       </div>
     </div>
 
-    <section class="hero">
+    <section class="hero section-block" id="overview">
       <div class="panel hero-main">
-        <div class="eyebrow">Privacy chain · GHST mainnet</div>
-        <h1>GhostCoin Block Explorer</h1>
+        <div class="eyebrow">Privacy chain - GHST mainnet</div>
+        <h1><span class="gradient-text">GhostCoin Explorer</span></h1>
         <div class="hero-copy">
-          A lighter, cleaner public dashboard for GhostCoin. Track the chain, monitor live supply,
-          inspect mempool activity, and connect wallets or tooling directly to the public endpoints.
+          A brighter public dashboard for GhostCoin. Follow chain growth, inspect mempool activity,
+          review mining economics, and keep the public network endpoints within reach.
         </div>
         <div class="mini-grid">
           <div class="mini">
-            <div class="label">Current height</div>
+            <div class="label">Block height</div>
             <div class="value">#{}</div>
           </div>
           <div class="mini">
-            <div class="label">Network status</div>
+            <div class="label">Network</div>
             <div class="value" style="color:var(--accent-deep)">Online</div>
           </div>
           <div class="mini">
@@ -485,26 +737,54 @@ async fn home() -> Html<String> {
     <section class="grid">
       <div class="stats">
         <article class="stat">
-          <div class="stat-top"><div class="stat-name">Circulating supply</div><div class="stat-icon">👻</div></div>
+          <div class="stat-top"><div class="stat-name">Circulating supply</div><div class="stat-icon">S</div></div>
           <div class="stat-number">{} GHST</div>
           <div class="stat-copy">Issued on-chain so far out of a fixed {} GHST cap.</div>
         </article>
         <article class="stat">
-          <div class="stat-top"><div class="stat-name">Mempool</div><div class="stat-icon">🧾</div></div>
+          <div class="stat-top"><div class="stat-name">Mempool</div><div class="stat-icon">M</div></div>
           <div class="stat-number">{} tx</div>
-          <div class="stat-copy">Transactions waiting for confirmation in the next block.</div>
+          <div class="stat-copy">Transactions currently waiting for confirmation.</div>
         </article>
         <article class="stat">
-          <div class="stat-top"><div class="stat-name">Difficulty</div><div class="stat-icon">⚒️</div></div>
+          <div class="stat-top"><div class="stat-name">Difficulty</div><div class="stat-icon">D</div></div>
           <div class="stat-number">{}</div>
           <div class="stat-copy">Current SHA-256 mining target difficulty.</div>
         </article>
         <article class="stat">
-          <div class="stat-top"><div class="stat-name">Total fees</div><div class="stat-icon">💸</div></div>
+          <div class="stat-top"><div class="stat-name">Total fees</div><div class="stat-icon">F</div></div>
           <div class="stat-number">{} GHST</div>
-          <div class="stat-copy">Fees already secured by accepted blocks.</div>
+          <div class="stat-copy">Fees already secured inside accepted blocks.</div>
         </article>
       </div>
+
+      <article class="panel table-card section-block" id="blocks">
+        <div class="section-title">
+          <h2>Blocks</h2>
+          <span>Latest chain snapshot</span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Current tip</div>
+            <div class="big">#{}</div>
+            <div class="mini-copy">Latest height seen by the running node.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Last hash</div>
+            <div class="big"><code>{}</code></div>
+            <div class="mini-copy">Current public chain head hash.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Total tx</div>
+            <div class="big">{}</div>
+            <div class="mini-copy">Transactions confirmed on-chain so far.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>Height</th><th>Hash / Snapshot</th><th>Reward</th><th>Status</th></tr>
+          {}
+        </table>
+      </article>
 
       <article class="panel content-card wide">
         <div class="section-title">
@@ -529,16 +809,116 @@ async fn home() -> Html<String> {
         </div>
       </article>
 
+      <article class="panel table-card section-block" id="mempool">
+        <div class="section-title">
+          <h2>Mempool</h2>
+          <span><span class="badge demo">Live pending queue</span></span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Pending tx</div>
+            <div class="big">{}</div>
+            <div class="mini-copy">Transactions waiting for inclusion.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Total fees</div>
+            <div class="big">{} GHST</div>
+            <div class="mini-copy">Accumulated fees in the current mempool.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Average fee</div>
+            <div class="big">{:.2} GHST</div>
+            <div class="mini-copy">Average fee across pending entries.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>TX ID</th><th>Amount</th><th>Fee</th><th>Fee rate</th><th>Priority</th></tr>
+          {}
+        </table>
+      </article>
+
+      <article class="panel table-card section-block" id="holders">
+        <div class="section-title">
+          <h2>Top holders</h2>
+          <span><span class="badge demo">Demo ranking until full holder indexer lands</span></span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Total holders</div>
+            <div class="big">14,217</div>
+            <div class="mini-copy">Estimated public holder set.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Top 10 share</div>
+            <div class="big">39.60%</div>
+            <div class="mini-copy">Demo concentration view for the current layout.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Average balance</div>
+            <div class="big">59 GHST</div>
+            <div class="mini-copy">Display-only until the address index ships.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>#</th><th>Address</th><th>Balance</th><th>Share</th><th>TXs</th></tr>
+          {}
+        </table>
+      </article>
+
       <div class="features">
-        <article class="feature"><div>👤</div><strong>Stealth addresses</strong><p>Each payment can target a one-time destination, reducing recipient linkability.</p></article>
-        <article class="feature"><div>💍</div><strong>Ring signatures</strong><p>Transactions can hide the real signer inside a larger crowd.</p></article>
-        <article class="feature"><div>🔮</div><strong>zk-SNARKs</strong><p>Proof systems validate rules while revealing far less raw transaction data.</p></article>
-        <article class="feature"><div>🌿</div><strong>Dandelion++</strong><p>Broadcast propagation is shaped to make transaction origin harder to trace.</p></article>
-        <article class="feature"><div>🛡️</div><strong>Quantum-safe track</strong><p>The roadmap includes post-quantum ideas for longer-term signature resilience.</p></article>
-        <article class="feature"><div>🌊</div><strong>MimbleWimble ideas</strong><p>Compression and minimal on-chain data remain part of the broader design story.</p></article>
+        <article class="feature"><div>P</div><strong>Stealth addresses</strong><p>Each payment can target a one-time destination, reducing recipient linkability.</p></article>
+        <article class="feature"><div>R</div><strong>Ring signatures</strong><p>Transactions can hide the real signer inside a larger crowd.</p></article>
+        <article class="feature"><div>Z</div><strong>zk-SNARKs</strong><p>Proof systems validate rules while revealing far less raw transaction data.</p></article>
+        <article class="feature"><div>D</div><strong>Dandelion++</strong><p>Broadcast propagation is shaped to make transaction origin harder to trace.</p></article>
+        <article class="feature"><div>Q</div><strong>Quantum-safe track</strong><p>The roadmap includes post-quantum ideas for longer-term signature resilience.</p></article>
+        <article class="feature"><div>M</div><strong>MimbleWimble ideas</strong><p>Compression and minimal on-chain data remain part of the broader design story.</p></article>
       </div>
 
-      <article class="panel table-card" id="tokenomics">
+      <article class="panel table-card section-block" id="mining">
+        <div class="section-title">
+          <h2>Mining</h2>
+          <span>Current chain economics and next halving milestone</span>
+        </div>
+        <div class="substats">
+          <div class="substat">
+            <div class="eyeline">Reward</div>
+            <div class="big">{} GHST</div>
+            <div class="mini-copy">Current block subsidy on this chain era.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Next halving</div>
+            <div class="big">#{}</div>
+            <div class="mini-copy">Planned halving block based on protocol rules.</div>
+          </div>
+          <div class="substat">
+            <div class="eyeline">Era progress</div>
+            <div class="big">{:.2}%</div>
+            <div class="mini-copy">Progress inside the active halving window.</div>
+          </div>
+        </div>
+        <table>
+          <tr><th>Metric</th><th>Value</th></tr>
+          <tr><td>Consensus</td><td>Proof of Work, SHA-256</td></tr>
+          <tr><td>Reward schedule</td><td>Halving every 210,000 blocks</td></tr>
+          <tr><td>Current reward</td><td>{} GHST / block</td></tr>
+          <tr><td>Difficulty</td><td>{}</td></tr>
+        </table>
+      </article>
+
+      <article class="panel table-card section-block" id="buy">
+        <div class="section-title">
+          <h2>Buy GHST</h2>
+          <span>Current acquisition flow for early network users</span>
+        </div>
+        <table>
+          <tr><th>Method</th><th>Details</th></tr>
+          <tr><td>Mine locally</td><td>Run the CLI wallet, choose mining, and secure fresh GHST directly from the chain.</td></tr>
+          <tr><td>P2P transfer</td><td>Receive GHST from another wallet once wallet-to-wallet transfers are active in your session.</td></tr>
+          <tr><td>Exchange listing</td><td>Planned for a later phase. This page will switch from guide mode to live market routing once listings exist.</td></tr>
+        </table>
+      </article>
+
+      <article class="panel table-card section-block" id="tokenomics">
         <div class="section-title">
           <h2>Tokenomics</h2>
           <span>Total transactions: {}</span>
@@ -556,16 +936,49 @@ async fn home() -> Html<String> {
         </table>
       </article>
 
-      <article class="panel table-card" id="network">
+      <article class="panel table-card section-block" id="roadmap">
         <div class="section-title">
-          <h2>Network endpoints</h2>
+          <h2>Roadmap</h2>
+          <span>Short-term product and protocol priorities</span>
+        </div>
+        <div class="roadmap">
+          <div class="roadmap-item"><strong>Phase 1 - Stable explorer</strong><p>Keep the public dashboard clean, readable, and wired to live node stats plus mempool visibility.</p></div>
+          <div class="roadmap-item"><strong>Phase 2 - Wallet transfers</strong><p>Expose the first public GHST transactions between wallets with clearer transaction detail pages and live confirmations.</p></div>
+          <div class="roadmap-item"><strong>Phase 3 - Public seed</strong><p>Move to a persistent seed or VPS so chain history survives restarts and bootstrap becomes automatic.</p></div>
+        </div>
+      </article>
+
+      <article class="panel table-card section-block" id="faq">
+        <div class="section-title">
+          <h2>FAQ</h2>
+          <span>Quick answers for miners, holders, and node operators</span>
+        </div>
+        <div class="faq">
+          <details open>
+            <summary>Why can Railway show height #0 after a restart?</summary>
+            <p>Because the free Railway setup has no persistent volume. After a restart, the node needs either a public bootstrap peer or a persistent disk to recover its chain state automatically.</p>
+          </details>
+          <details>
+            <summary>Is the mempool live?</summary>
+            <p>Yes. The mempool section reads the current pending queue from the running node and shows real pending transactions when they exist.</p>
+          </details>
+          <details>
+            <summary>Are holders and buy sections fully live?</summary>
+            <p>Not yet. Those sections are intentionally marked as demo or guide content until the backing indexer and liquidity sources are ready.</p>
+          </details>
+        </div>
+      </article>
+
+      <article class="panel table-card section-block" id="api">
+        <div class="section-title">
+          <h2>API and endpoints</h2>
           <span>Use these for wallets, nodes, or dashboards</span>
         </div>
         <div class="endpoint-list">
-          <div class="endpoint">TCP → shuttle.proxy.rlwy.net:48191</div>
-          <div class="endpoint">HTTP → ghostcoin-production.up.railway.app</div>
-          <div class="endpoint">API → ghostcoin-production.up.railway.app/api/stats</div>
-          <div class="endpoint">Mempool API → ghostcoin-production.up.railway.app/api/mempool</div>
+          <div class="endpoint">TCP -> shuttle.proxy.rlwy.net:48191</div>
+          <div class="endpoint">HTTP -> ghostcoin-production.up.railway.app</div>
+          <div class="endpoint">API -> ghostcoin-production.up.railway.app/api/stats</div>
+          <div class="endpoint">Mempool API -> ghostcoin-production.up.railway.app/api/mempool</div>
         </div>
       </article>
     </section>
@@ -573,13 +986,54 @@ async fn home() -> Html<String> {
     <footer class="footer">
       <div><strong>GhostCoin (GHST)</strong><br>Public privacy-chain explorer with automatic refresh every 30 seconds.</div>
       <div class="footer-links">
-        <a href="/api/stats">API Stats</a>
-        <a href="/api/mempool">Mempool</a>
+        <a href="#overview">Overview</a>
+        <a href="#mempool">Mempool</a>
+        <a href="#api">API</a>
       </div>
     </footer>
   </div>
 
   <script>
+    const navLinks = Array.from(document.querySelectorAll('.nav-link'));
+    const sectionIds = navLinks
+      .map(link => link.getAttribute('href'))
+      .filter(href => href && href.startsWith('#'))
+      .map(href => href.slice(1));
+
+    function setActiveNav(id) {{
+      navLinks.forEach(link => {{
+        const active = link.getAttribute('href') === '#' + id;
+        link.classList.toggle('active', active);
+      }});
+    }}
+
+    const observer = new IntersectionObserver((entries) => {{
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible) {{
+        setActiveNav(visible.target.id);
+      }}
+    }}, {{ rootMargin: '-25% 0px -55% 0px', threshold: [0.15, 0.35, 0.6] }});
+
+    sectionIds.forEach(id => {{
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    }});
+
+    navLinks.forEach(link => {{
+      link.addEventListener('click', () => {{
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) {{
+          setActiveNav(href.slice(1));
+        }}
+      }});
+    }});
+
+    if (location.hash) {{
+      setActiveNav(location.hash.slice(1));
+    }}
+
     async function fetchPrices() {{
       try {{
         const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin&vs_currencies=usd&include_24hr_change=true');
@@ -613,7 +1067,7 @@ async fn home() -> Html<String> {
         const ethData = await ethRes.json();
         const labels = btcData.prices.map(point => {{
           const date = new Date(point[0]);
-          return date.toLocaleDateString('fr-FR', {{ month: 'short', day: 'numeric' }});
+          return date.toLocaleDateString('en-US', {{ month: 'short', day: 'numeric' }});
         }});
 
         const ctx = document.getElementById('priceChart').getContext('2d');
@@ -625,8 +1079,8 @@ async fn home() -> Html<String> {
               {{
                 label: 'BTC',
                 data: btcData.prices.map(point => point[1]),
-                borderColor: '#173540',
-                backgroundColor: 'rgba(23,53,64,0.08)',
+                borderColor: '#1d3440',
+                backgroundColor: 'rgba(29,52,64,0.08)',
                 tension: 0.35,
                 fill: true,
                 borderWidth: 2
@@ -634,8 +1088,8 @@ async fn home() -> Html<String> {
               {{
                 label: 'ETH',
                 data: ethData.prices.map(point => point[1]),
-                borderColor: '#0f9d74',
-                backgroundColor: 'rgba(15,157,116,0.10)',
+                borderColor: '#139c75',
+                backgroundColor: 'rgba(19,156,117,0.10)',
                 tension: 0.35,
                 fill: true,
                 borderWidth: 2
@@ -647,12 +1101,12 @@ async fn home() -> Html<String> {
             maintainAspectRatio: false,
             interaction: {{ mode: 'index', intersect: false }},
             plugins: {{
-              legend: {{ labels: {{ color: '#15251f' }} }}
+              legend: {{ labels: {{ color: '#16251f' }} }}
             }},
             scales: {{
-              x: {{ ticks: {{ color: '#60716d' }}, grid: {{ color: 'rgba(20,35,31,0.08)' }} }},
+              x: {{ ticks: {{ color: '#62706d' }}, grid: {{ color: 'rgba(20,35,31,0.08)' }} }},
               y: {{
-                ticks: {{ color: '#60716d', callback: value => '$' + Number(value).toLocaleString() }},
+                ticks: {{ color: '#62706d', callback: value => '$' + Number(value).toLocaleString() }},
                 grid: {{ color: 'rgba(20,35,31,0.08)' }}
               }}
             }}
@@ -673,15 +1127,15 @@ async fn home() -> Html<String> {
           labels: ['Mined', 'Remaining'],
           datasets: [{{
             data: [minted, remaining],
-            backgroundColor: ['#0f9d74', '#dfe8e4'],
-            borderColor: ['#0b6b55', '#c9d7d1'],
+            backgroundColor: ['#139c75', '#dfe8e4'],
+            borderColor: ['#0d6b57', '#c9d7d1'],
             borderWidth: 1
           }}]
         }},
         options: {{
           responsive: true,
           plugins: {{
-            legend: {{ position: 'bottom', labels: {{ color: '#15251f' }} }}
+            legend: {{ position: 'bottom', labels: {{ color: '#16251f' }} }}
           }},
           cutout: '72%'
         }}
@@ -701,12 +1155,26 @@ async fn home() -> Html<String> {
         state.current_reward(),
         state.minted_supply,
         max_supply,
-        mempool.pending_count(),
+        pending_count,
         state.difficulty,
         state.total_fees,
+        state.block_height,
+        last_hash_short,
+        state.total_tx_count,
+        blocks_rows,
         supply_pct,
         state.minted_supply,
         remaining_supply,
+        pending_count,
+        total_mempool_fees,
+        avg_fee,
+        mempool_rows,
+        holders_rows,
+        state.current_reward(),
+        next_halving,
+        halving_progress,
+        state.current_reward(),
+        state.difficulty,
         state.total_tx_count,
         max_supply,
         state.current_reward(),
