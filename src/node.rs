@@ -109,10 +109,14 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
     // Record the actual remote endpoint instead of assuming localhost.
     state.add_peer(&peer_addr);
 
-    // Read full payload instead of a fixed 4KB read to avoid truncating NewBlockFull JSON.
     let mut buf = Vec::new();
-    match socket.read_to_end(&mut buf).await {
-        Ok(n) if n > 0 => {
+    match tokio::time::timeout(
+        tokio::time::Duration::from_secs(5),
+        socket.read_to_end(&mut buf),
+    )
+    .await
+    {
+        Ok(Ok(n)) if n > 0 => {
             println!("Message received from {}", peer_addr);
             match serde_json::from_slice::<NodeMessage>(&buf[..n]) {
                 Ok(msg) => {
@@ -120,6 +124,7 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
                     if let Some(resp) = response {
                         let json = serde_json::to_string(&resp).unwrap();
                         let _ = socket.write_all(json.as_bytes()).await;
+                        let _ = socket.flush().await;
                     }
                 }
                 Err(e) => {
@@ -127,7 +132,9 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
                 }
             }
         }
-        _ => {}
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => println!("Read error from {}: {}", peer_addr, e),
+        Err(_) => println!("Timeout reading from {}", peer_addr),
     }
 }
 
