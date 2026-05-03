@@ -113,21 +113,23 @@ pub async fn run_server_mode() {
     }
 
     tokio::spawn(async move {
-        start_web_server_on_port(web_port).await;
+        let mut tick = 0u64;
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            tick += 1;
+            let state = ChainState::load();
+            println!(
+                "[{} min] Height: #{} | Supply: {} GHST",
+                tick, state.block_height, state.minted_supply
+            );
+        }
     });
-    println!("Web server started on port {}", web_port);
 
+    println!("Web server starting on port {}", web_port);
     println!("\nGhostCoin network online.");
     println!("Public explorer is available.\n");
 
-    let mut tick = 0u64;
-    loop {
-        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-        tick += 1;
-        let state = ChainState::load();
-        println!(
-            "[{} min] Height: #{} | Supply: {} GHST",
-            tick, state.block_height, state.minted_supply
-        );
-    }
+    // Keep the web server on the main task so bind failures are visible and
+    // Railway healthchecks reflect the real application state immediately.
+    start_web_server_on_port(web_port).await;
 }
