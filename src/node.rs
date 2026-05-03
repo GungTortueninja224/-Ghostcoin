@@ -195,6 +195,7 @@ async fn process_message(msg: NodeMessage, state: &NodeState) -> Option<NodeMess
             Some(NodeMessage::Blocks { blocks })
         }
         NodeMessage::Blocks { blocks } => {
+            println!("DEBUG Blocks recus: {} blocs", blocks.len());
             let added = state.chain.merge_blocks_from_network(blocks);
             if added > 0 {
                 let tip = state.chain.last_index();
@@ -215,10 +216,11 @@ pub async fn send_to_node(addr: &str, msg: &NodeMessage) -> Option<NodeMessage> 
             if stream.write_all(json.as_bytes()).await.is_err() {
                 return None;
             }
-            let _ = stream.shutdown().await;
+            let (mut reader, mut writer) = stream.into_split();
+            let _ = writer.shutdown().await;
 
             let mut buf = Vec::new();
-            match stream.read_to_end(&mut buf).await {
+            match reader.read_to_end(&mut buf).await {
                 Ok(n) if n > 0 => serde_json::from_slice::<NodeMessage>(&buf[..n]).ok(),
                 _ => None,
             }
