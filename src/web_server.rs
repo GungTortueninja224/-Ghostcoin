@@ -1559,9 +1559,17 @@ async fn api_mempool() -> Json<Value> {
     }))
 }
 
+async fn health() -> Json<Value> {
+    Json(json!({
+        "status": "ok",
+        "service": "ghostcoin-web",
+    }))
+}
+
 pub async fn start_web_server_on_port(port: u16) {
     let app = Router::new()
         .route("/", get(home))
+        .route("/health", get(health))
         .route("/blocks", get(home))
         .route("/mempool", get(home))
         .route("/holders", get(home))
