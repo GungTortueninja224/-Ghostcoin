@@ -1,9 +1,9 @@
 {
-  "block_height": 3,
-  "minted_supply": 195,
+  "block_height": 7,
+  "minted_supply": 455,
   "difficulty": 4,
-  "last_block_hash": "0000d363a924c66ba441a496bb507dcede0ab0f481d3eb61d352c0a6fb7a50b5",
-  "last_block_time": 1777762401,
+  "last_block_hash": "0000d3233ed20d5b7dd14f0f6f2db1afbe2f042d811c06623b8d06a70ac97bee",
+  "last_block_time": 1777769033,
   "total_tx_count": 0,
   "total_fees": 0
 }

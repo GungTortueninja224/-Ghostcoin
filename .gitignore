@@ -5,3 +5,5 @@ ghostcoin_*.json
 ghostcoin.log
 portfolio_*.json
 txhistory_*.json
+Microsoft/
+chain_reset_backup_*/
