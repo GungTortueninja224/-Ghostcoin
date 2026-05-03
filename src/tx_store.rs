@@ -141,12 +141,14 @@ impl WalletTxStore {
         let _    = fs::write(&self.path, json);
     }
 
-    pub fn add(&self, tx: WalletTx) {
+    pub fn add(&self, tx: WalletTx) -> bool {
         let mut txs = self.load();
         if !txs.iter().any(|t| t.tx_id == tx.tx_id) {
             txs.push(tx);
             self.save(&txs);
+            return true;
         }
+        false
     }
 
     pub fn confirm_tx(&self, tx_id: &str, block_height: u64) {

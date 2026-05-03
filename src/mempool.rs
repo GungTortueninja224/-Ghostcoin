@@ -29,7 +29,10 @@ pub struct MempoolTx {
     pub fee_rate: u64,
     pub size_bytes: u64,
     pub timestamp: i64,
+    #[serde(default)]
     pub claimed: bool,
+    #[serde(default)]
+    pub receiver_claimed: bool,
     pub relay_count: u32,
 }
 
@@ -48,6 +51,7 @@ impl MempoolTx {
             size_bytes,
             timestamp: Utc::now().timestamp(),
             claimed: false,
+            receiver_claimed: false,
             relay_count: 0,
         }
     }
@@ -163,7 +167,7 @@ impl Mempool {
 
     pub fn purge_expired(&mut self) -> usize {
         let before = self.txs.len();
-        self.txs.retain(|tx| !tx.is_expired() && !tx.claimed);
+        self.txs.retain(|tx| tx.claimed || !tx.is_expired());
         let removed = before - self.txs.len();
         if removed > 0 {
             println!("{} TX supprimées du mempool", removed);

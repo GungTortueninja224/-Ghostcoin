@@ -4,7 +4,7 @@ use std::path::Path;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use crate::config;
 use crate::mempool::{Mempool, MempoolTx};
@@ -203,9 +203,26 @@ pub fn broadcast_tx(tx: PendingTx) {
 pub fn claim_incoming(my_address: &str) -> Vec<PendingTx> {
     let mut mempool = Mempool::load();
     let mut found = vec![];
+    let mut changed = false;
+    let tx_store = crate::tx_store::WalletTxStore::new(my_address);
+    let known_tx_ids: HashSet<String> = tx_store
+        .load()
+        .into_iter()
+        .map(|tx| tx.tx_id)
+        .collect();
 
     for tx in mempool.txs.iter_mut() {
-        if tx.receiver == my_address && !tx.claimed {
+        if tx.receiver != my_address {
+            continue;
+        }
+
+        if known_tx_ids.contains(&tx.tx_id) {
+            tx.receiver_claimed = true;
+            changed = true;
+            continue;
+        }
+
+        if !tx.receiver_claimed {
             found.push(PendingTx {
                 tx_id: tx.tx_id.clone(),
                 sender: tx.sender.clone(),
@@ -215,13 +232,14 @@ pub fn claim_incoming(my_address: &str) -> Vec<PendingTx> {
                 timestamp: chrono::Utc::now()
                     .format("%Y-%m-%d %H:%M:%S UTC")
                     .to_string(),
-                claimed: false,
+                claimed: tx.claimed,
             });
-            tx.claimed = true;
+            tx.receiver_claimed = true;
+            changed = true;
         }
     }
 
-    if !found.is_empty() {
+    if changed {
         mempool.save();
     }
 
