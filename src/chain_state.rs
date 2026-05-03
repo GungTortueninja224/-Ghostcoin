@@ -10,6 +10,14 @@ pub fn chain_state_path() -> String {
         "ghostcoin_chain.json".to_string()
     }
 }
+
+fn ensure_chain_state_parent_dir(path: &str) {
+    if let Some(parent) = Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+}
 pub const MAX_SUPPLY: u64 = 50_000_000;
 pub const INITIAL_REWARD: u64 = 65;
 pub const HALVING_INTERVAL: u64 = 210_000;
@@ -40,6 +48,7 @@ impl ChainState {
 
     pub fn load() -> Self {
         let path = chain_state_path();
+        ensure_chain_state_parent_dir(&path);
         if !Path::new(&path).exists() {
             let state = Self::new();
             state.save();
@@ -51,7 +60,9 @@ impl ChainState {
 
     pub fn save(&self) {
         if let Ok(json) = serde_json::to_string_pretty(self) {
-            let _ = fs::write(chain_state_path(), json);
+            let path = chain_state_path();
+            ensure_chain_state_parent_dir(&path);
+            let _ = fs::write(path, json);
         }
     }
 

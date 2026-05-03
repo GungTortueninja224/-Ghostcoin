@@ -13,6 +13,14 @@ fn blocks_file() -> String {
         "ghostcoin_blocks.json".to_string()
     }
 }
+
+fn ensure_blocks_parent_dir(path: &str) {
+    if let Some(parent) = Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = fs::create_dir_all(parent);
+        }
+    }
+}
 const SYNC_CHUNK_SIZE: usize = 128;
 const SYNC_CHUNK_MAX: usize = 512;
 
@@ -33,6 +41,7 @@ impl SharedChain {
 
     fn load_from_disk() -> Vec<MinedBlock> {
         let path = blocks_file();
+        ensure_blocks_parent_dir(&path);
         if !Path::new(&path).exists() {
             return vec![];
         }
@@ -41,8 +50,10 @@ impl SharedChain {
     }
 
     fn save_to_disk(blocks: &[MinedBlock]) {
+        let path = blocks_file();
+        ensure_blocks_parent_dir(&path);
         let json = serde_json::to_string_pretty(blocks).unwrap();
-        let _ = fs::write(blocks_file(), json);
+        let _ = fs::write(path, json);
     }
 
     fn rebuild_chain_state(blocks: &[MinedBlock]) {
