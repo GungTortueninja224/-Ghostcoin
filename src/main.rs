@@ -46,7 +46,7 @@ use storage::{load_wallet, save_wallet, wallet_exists};
 use sync::{ChainSync, SharedChain};
 use tokio::time::{sleep, Duration};
 
-const DEFAULT_SEED_NODE: &str = "66.241.124.252:8001";
+const DEFAULT_SEED_NODE: &str = "168.220.83.3:8001";
 const DEFAULT_STATUS_NODE: &str = "127.0.0.1:8001";
 
 fn default_seed_nodes() -> Vec<String> {

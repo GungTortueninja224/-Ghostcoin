@@ -64,13 +64,13 @@ pub fn bootstrap_peers() -> Vec<String> {
 }
 
 pub fn default_seed_node() -> &'static str {
-    "66.241.124.252:8001"
+    "168.220.83.3:8001"
 }
 
 pub fn default_seed_nodes() -> Vec<String> {
     vec![
-        "66.241.124.252:8001".to_string(),
-        "66.241.124.182:8001".to_string(),
+        "168.220.83.3:8001".to_string(),
+        "137.66.10.29:8001".to_string(),
     ]
 }
 
