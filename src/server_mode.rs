@@ -109,6 +109,14 @@ pub async fn run_server_mode() {
             } else {
                 println!("Bootstrap found no new blocks");
             }
+
+            let pushed = sync.push_missing_blocks_to_peers().await;
+            if pushed > 0 {
+                println!(
+                    "Bootstrap backfilled {} block(s) to lagging peer(s)",
+                    pushed
+                );
+            }
         });
     }
 
