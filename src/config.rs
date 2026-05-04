@@ -63,6 +63,10 @@ pub fn bootstrap_peers() -> Vec<String> {
         .unwrap_or_default()
 }
 
+pub fn default_seed_node() -> &'static str {
+    "shuttle.proxy.rlwy.net:48191"
+}
+
 pub fn ensure_data_dir() -> std::io::Result<()> {
     let dir = data_dir();
     if !dir.exists() {

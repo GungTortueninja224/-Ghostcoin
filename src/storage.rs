@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashSet};
 
 use crate::config;
 use crate::mempool::{Mempool, MempoolTx};
-use crate::node::{send_to_node_fire_and_forget, NodeMessage};
+use crate::node::{send_to_node, NodeMessage};
 
 #[derive(Serialize, Deserialize)]
 pub struct WalletFile {
@@ -160,6 +160,8 @@ fn relay_targets() -> Vec<String> {
         peers.insert(peer.to_string());
     }
 
+    peers.insert(config::default_seed_node().to_string());
+
     for peer in config::bootstrap_peers() {
         peers.insert(peer);
     }
@@ -174,11 +176,58 @@ fn propagate_pending_tx(tx: &MempoolTx) {
     }
 
     let message = NodeMessage::NewTx { tx: tx.clone() };
+    let tx_id = tx.tx_id.clone();
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
         handle.spawn(async move {
+            let mut accepted = 0usize;
+            let attempted = peers.len();
+
             for peer in peers {
-                send_to_node_fire_and_forget(&peer, &message).await;
+                match send_to_node(&peer, &message).await {
+                    Some(NodeMessage::TxAck {
+                        accepted: true,
+                        mempool,
+                        ..
+                    }) => {
+                        accepted = accepted.saturating_add(1);
+                        println!(
+                            "Relay TX {} accepted by {} (mempool {})",
+                            &tx_id[..16.min(tx_id.len())],
+                            peer,
+                            mempool
+                        );
+                    }
+                    Some(NodeMessage::TxAck { accepted: false, .. }) => {
+                        println!(
+                            "Relay TX {} rejected by {}",
+                            &tx_id[..16.min(tx_id.len())],
+                            peer
+                        );
+                    }
+                    Some(other) => {
+                        println!(
+                            "Relay TX {} unexpected response from {}: {:?}",
+                            &tx_id[..16.min(tx_id.len())],
+                            peer,
+                            other
+                        );
+                    }
+                    None => {
+                        println!(
+                            "Relay TX {} failed to reach {}",
+                            &tx_id[..16.min(tx_id.len())],
+                            peer
+                        );
+                    }
+                }
             }
+
+            println!(
+                "Relay TX {} summary: {}/{} peer(s) accepted",
+                &tx_id[..16.min(tx_id.len())],
+                accepted,
+                attempted
+            );
         });
     }
 }

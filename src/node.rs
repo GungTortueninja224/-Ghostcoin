@@ -90,6 +90,11 @@ pub enum NodeMessage {
     PeerList { peers: Vec<String> },
     GetPeers,
     NewTx { tx: MempoolTx },
+    TxAck {
+        tx_id: String,
+        accepted: bool,
+        mempool: usize,
+    },
     NewBlock { block_index: u32, hash: String },
     NewBlockFull { block: MinedBlock },
     GetStatus,
@@ -250,12 +255,13 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
         NodeMessage::NewTx { tx } => {
             let tx_id = tx.tx_id.clone();
             let added = state.add_to_mempool(tx.clone());
+            let mempool_size = state.mempool_size();
             println!(
                 "Node {}: tx {} {} (mempool {})",
                 state.port,
                 &tx_id[..16.min(tx_id.len())],
                 if added { "stored" } else { "already known" },
-                state.mempool_size()
+                mempool_size
             );
 
             if added {
@@ -270,7 +276,11 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
                     }
                 }
             }
-            None
+            Some(NodeMessage::TxAck {
+                tx_id,
+                accepted: true,
+                mempool: mempool_size,
+            })
         }
         NodeMessage::NewBlock { block_index, hash } => {
             state.set_block_count(block_index);
