@@ -155,11 +155,15 @@ async fn main() {
         return;
     }
 
-    let _instance_lock = match instance_lock::InstanceLock::acquire() {
-        Ok(lock) => lock,
-        Err(message) => {
-            eprintln!("{}", message);
-            return;
+    let _instance_lock = if config::is_server() {
+        None
+    } else {
+        match instance_lock::InstanceLock::acquire() {
+            Ok(lock) => Some(lock),
+            Err(message) => {
+                eprintln!("{}", message);
+                return;
+            }
         }
     };
 

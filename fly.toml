@@ -1,0 +1,44 @@
+app = "ghostcoin-seed-1"
+primary_region = "yyz"
+
+[build]
+
+[env]
+  GHOSTCOIN_SERVER = "true"
+  GHOSTCOIN_P2P_PORT = "8001"
+  GHOSTCOIN_WEB_PORT = "8080"
+  GHOSTCOIN_DATA_DIR = "/var/lib/ghostcoin"
+
+[mounts]
+  source = "ghostcoin_data"
+  destination = "/var/lib/ghostcoin"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8001
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 8001
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 8080
+
+[checks]
+  [checks.alive]
+    type = "http"
+    port = 8080
+    method = "get"
+    path = "/health"
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
