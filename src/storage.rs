@@ -160,7 +160,9 @@ fn relay_targets() -> Vec<String> {
         peers.insert(peer.to_string());
     }
 
-    peers.insert(config::default_seed_node().to_string());
+    for peer in config::default_seed_nodes() {
+        peers.insert(peer);
+    }
 
     for peer in config::bootstrap_peers() {
         peers.insert(peer);

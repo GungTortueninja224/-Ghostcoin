@@ -67,6 +67,13 @@ pub fn default_seed_node() -> &'static str {
     "ghostcoin-seed-1.fly.dev:8001"
 }
 
+pub fn default_seed_nodes() -> Vec<String> {
+    vec![
+        "ghostcoin-seed-1.fly.dev:8001".to_string(),
+        "ghostcoin-seed-2.fly.dev:8001".to_string(),
+    ]
+}
+
 pub fn ensure_data_dir() -> std::io::Result<()> {
     let dir = data_dir();
     if !dir.exists() {

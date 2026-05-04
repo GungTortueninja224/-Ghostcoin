@@ -49,6 +49,10 @@ use tokio::time::{sleep, Duration};
 const DEFAULT_SEED_NODE: &str = "ghostcoin-seed-1.fly.dev:8001";
 const DEFAULT_STATUS_NODE: &str = "127.0.0.1:8001";
 
+fn default_seed_nodes() -> Vec<String> {
+    config::default_seed_nodes()
+}
+
 fn read_input(prompt: &str) -> String {
     print!("{}", prompt);
     io::stdout().flush().unwrap();
@@ -307,9 +311,11 @@ async fn main() {
     node2.add_peer("127.0.0.1:8003");
     node3.add_peer("127.0.0.1:8001");
     node3.add_peer("127.0.0.1:8002");
-    node1.add_peer(DEFAULT_SEED_NODE);
-    node2.add_peer(DEFAULT_SEED_NODE);
-    node3.add_peer(DEFAULT_SEED_NODE);
+    for seed in default_seed_nodes() {
+        node1.add_peer(&seed);
+        node2.add_peer(&seed);
+        node3.add_peer(&seed);
+    }
 
     let n1 = node1.clone();
     let n2 = node2.clone();
@@ -343,15 +349,14 @@ async fn main() {
     sleep(Duration::from_millis(100)).await;
 
     println!("\n📊 Réseau {} :", config.name);
-    let bootstrap_sync = ChainSync::new_with_chain(
-        shared_chain.clone(),
-        vec![
-            DEFAULT_SEED_NODE.to_string(),
-            "127.0.0.1:8001".to_string(),
-            "127.0.0.1:8002".to_string(),
-            "127.0.0.1:8003".to_string(),
-        ],
-    );
+    let mut bootstrap_peers = vec![
+        "127.0.0.1:8001".to_string(),
+        "127.0.0.1:8002".to_string(),
+        "127.0.0.1:8003".to_string(),
+    ];
+    bootstrap_peers.extend(default_seed_nodes());
+
+    let bootstrap_sync = ChainSync::new_with_chain(shared_chain.clone(), bootstrap_peers);
 
     let synced_blocks = bootstrap_sync.sync_from_peers().await;
     if synced_blocks > 0 {
@@ -360,10 +365,10 @@ async fn main() {
         println!("Sync P2P : aucun nouveau bloc importe");
     }
 
-    let pushed_blocks = bootstrap_sync.push_missing_blocks_to_peer(DEFAULT_SEED_NODE).await;
+    let pushed_blocks = bootstrap_sync.push_missing_blocks_to_peers().await;
     if pushed_blocks > 0 {
         println!(
-            "Push P2P vers le seed : {} bloc(s) envoye(s) pour rattrapage",
+            "Push P2P vers les seeds : {} bloc(s) envoye(s) pour rattrapage",
             pushed_blocks
         );
     }

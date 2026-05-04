@@ -7,6 +7,7 @@ use crate::sync::{ChainSync, SharedChain};
 use crate::storage::{broadcast_tx, claim_incoming, PendingTx};
 use crate::tx_store::{WalletTxStore, WalletTx};
 use crate::chain_state::ChainState;
+use crate::config;
 use crate::logger::{log_tx, log_error, log_mining};
 
 pub struct Cli {
@@ -486,26 +487,25 @@ impl Cli {
         let reward    = miner.total_mined;
         self.explorer.chain.add_block(block.clone());
 
-        let chain_sync = ChainSync::new_with_chain(
-            self.explorer.chain.clone(),
-            vec![
-                "127.0.0.1:8001".to_string(),
-                "127.0.0.1:8002".to_string(),
-                "127.0.0.1:8003".to_string(),
-                "ghostcoin-seed-1.fly.dev:8001".to_string(),
-            ],
-        );
+        let mut sync_peers = vec![
+            "127.0.0.1:8001".to_string(),
+            "127.0.0.1:8002".to_string(),
+            "127.0.0.1:8003".to_string(),
+        ];
+        sync_peers.extend(config::default_seed_nodes());
+
+        let chain_sync = ChainSync::new_with_chain(self.explorer.chain.clone(), sync_peers);
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(chain_sync.broadcast_block(&block))
         });
         let pushed_blocks = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
-                .block_on(chain_sync.push_missing_blocks_to_peer("ghostcoin-seed-1.fly.dev:8001"))
+                .block_on(chain_sync.push_missing_blocks_to_peers())
         });
         println!("🌐 Bloc diffusé au réseau P2P");
         if pushed_blocks > 0 {
             println!(
-                "🔄 Rattrapage seed Railway : {} bloc(s) renvoyé(s)",
+                "🔄 Rattrapage seeds publics : {} bloc(s) renvoyé(s)",
                 pushed_blocks
             );
         }
