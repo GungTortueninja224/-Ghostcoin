@@ -64,13 +64,13 @@ pub fn bootstrap_peers() -> Vec<String> {
 }
 
 pub fn default_seed_node() -> &'static str {
-    "ghostcoin-seed-1.fly.dev:8001"
+    "66.241.124.252:8001"
 }
 
 pub fn default_seed_nodes() -> Vec<String> {
     vec![
-        "ghostcoin-seed-1.fly.dev:8001".to_string(),
-        "ghostcoin-seed-2.fly.dev:8001".to_string(),
+        "66.241.124.252:8001".to_string(),
+        "66.241.124.182:8001".to_string(),
     ]
 }
 
