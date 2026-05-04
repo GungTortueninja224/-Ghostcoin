@@ -175,12 +175,24 @@ pub async fn run_node(state: NodeState) {
         "127.0.0.1"
     };
     let addr = format!("{}:{}", bind_host, state.port);
-    let listener = TcpListener::bind(&addr).await.expect("failed to bind node");
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            eprintln!("failed to bind node on {}: {}", addr, e);
+            return;
+        }
+    };
 
     println!("Node {} listening on {}", state.port, addr);
 
     loop {
-        let (socket, peer_addr) = listener.accept().await.unwrap();
+        let (socket, peer_addr) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                eprintln!("accept error on {}: {}", addr, e);
+                continue;
+            }
+        };
         let state_clone = state.clone();
         tokio::spawn(async move {
             handle_peer(socket, peer_addr.to_string(), state_clone).await;
@@ -222,13 +234,15 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             version: _,
             height,
         } => {
-            if let Some(canonical) = canonical_peer_addr(peer_addr, from_port) {
+            let canonical = canonical_peer_addr(peer_addr, from_port);
+            if let Some(canonical) = canonical.clone() {
                 state.add_peer(&canonical);
             }
             println!("Node {}: hello received", state.port);
 
             if height > state.chain.last_index() {
-                let sync = ChainSync::new_with_chain(state.chain.clone(), vec![peer_addr.to_string()]);
+                let sync_peer = canonical.unwrap_or_else(|| peer_addr.to_string());
+                let sync = ChainSync::new_with_chain(state.chain.clone(), vec![sync_peer]);
                 tokio::spawn(async move {
                     let _ = sync.sync_from_peers().await;
                 });
@@ -306,6 +320,9 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             if !already_known && added > 0 {
                 let peers = state.peers.lock().unwrap().clone();
                 for peer in peers {
+                    if peer == peer_addr {
+                        continue;
+                    }
                     send_to_node_fire_and_forget(
                         &peer,
                         &NodeMessage::NewBlockFull {

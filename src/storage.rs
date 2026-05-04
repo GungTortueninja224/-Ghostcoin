@@ -10,6 +10,23 @@ use crate::config;
 use crate::mempool::{Mempool, MempoolTx};
 use crate::node::{send_to_node, NodeMessage};
 
+fn write_bytes_atomic(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    let target = Path::new(path);
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    let tmp_path = format!("{}.tmp", path);
+    fs::write(&tmp_path, bytes)?;
+    if target.exists() {
+        fs::remove_file(target)?;
+    }
+    fs::rename(&tmp_path, target)?;
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct WalletFile {
     pub address: String,
@@ -111,7 +128,7 @@ pub fn save_wallet(
     };
 
     match serde_json::to_string(&wallet) {
-        Ok(json) => fs::write(path, encrypt_wallet_v2(json.as_bytes(), password)).is_ok(),
+        Ok(json) => write_bytes_atomic(path, &encrypt_wallet_v2(json.as_bytes(), password)).is_ok(),
         Err(_) => false,
     }
 }
@@ -137,7 +154,7 @@ pub fn update_balance(path: &str, password: &str, new_balance: u64) {
         w.balance = new_balance;
         if let Ok(json) = serde_json::to_string(&w) {
             let encrypted = encrypt_wallet_v2(json.as_bytes(), password);
-            let _ = fs::write(path, encrypted);
+            let _ = write_bytes_atomic(path, &encrypted);
         }
     }
 }

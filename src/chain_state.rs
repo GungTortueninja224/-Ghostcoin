@@ -14,6 +14,34 @@ fn ensure_chain_state_parent_dir(path: &Path) {
         }
     }
 }
+
+fn backup_corrupt_state_file(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+
+    let backup_name = format!(
+        "{}.corrupt.{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("ghostcoin_chain.json"),
+        Utc::now().timestamp()
+    );
+    let backup_path = path.with_file_name(backup_name);
+    let _ = fs::rename(path, backup_path);
+}
+
+fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    ensure_chain_state_parent_dir(path);
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, contents)?;
+
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    fs::rename(tmp_path, path)?;
+    Ok(())
+}
 pub const MAX_SUPPLY: u64 = 50_000_000;
 pub const INITIAL_REWARD: u64 = 65;
 pub const HALVING_INTERVAL: u64 = 210_000;
@@ -50,15 +78,46 @@ impl ChainState {
             state.save();
             return state;
         }
-        let json = fs::read_to_string(path).unwrap_or_default();
-        serde_json::from_str(&json).unwrap_or_else(|_| Self::new())
+
+        let json = match fs::read_to_string(&path) {
+            Ok(json) => json,
+            Err(e) => {
+                println!(
+                    "Unable to read chain state file {}: {}. Resetting state.",
+                    path.display(),
+                    e
+                );
+                let state = Self::new();
+                state.save();
+                return state;
+            }
+        };
+
+        match serde_json::from_str::<Self>(&json) {
+            Ok(mut state) => {
+                state.sanitize();
+                state
+            }
+            Err(e) => {
+                println!(
+                    "Corrupted chain state file {}: {}. Backing it up and resetting state.",
+                    path.display(),
+                    e
+                );
+                backup_corrupt_state_file(&path);
+                let state = Self::new();
+                state.save();
+                state
+            }
+        }
     }
 
     pub fn save(&self) {
         if let Ok(json) = serde_json::to_string_pretty(self) {
             let path = chain_state_path();
-            ensure_chain_state_parent_dir(&path);
-            let _ = fs::write(path, json);
+            if let Err(e) = write_atomic(&path, &json) {
+                println!("Failed to save chain state {}: {}", path.display(), e);
+            }
         }
     }
 
@@ -90,13 +149,25 @@ impl ChainState {
     }
 
     pub fn add_block(&mut self, hash: &str, reward: u64, fees: u64, tx_count: u64) {
+        let allowed_reward = self.current_reward();
+        let applied_reward = reward.min(allowed_reward);
         self.block_height = self.block_height.saturating_add(1);
-        self.minted_supply = self.minted_supply.saturating_add(reward).min(MAX_SUPPLY);
+        self.minted_supply = self
+            .minted_supply
+            .saturating_add(applied_reward)
+            .min(MAX_SUPPLY);
         self.last_block_hash = hash.to_string();
         self.last_block_time = Utc::now().timestamp();
         self.total_tx_count = self.total_tx_count.saturating_add(tx_count);
         self.total_fees = self.total_fees.saturating_add(fees);
         self.save();
+    }
+
+    fn sanitize(&mut self) {
+        self.minted_supply = self.minted_supply.min(MAX_SUPPLY);
+        if self.last_block_hash.trim().is_empty() {
+            self.last_block_hash = "0".to_string();
+        }
     }
 
     pub fn show(&self) {

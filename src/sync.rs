@@ -3,6 +3,7 @@ use crate::config;
 use crate::miner::MinedBlock;
 use crate::node::{send_to_node, send_to_node_fire_and_forget, NodeMessage};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -18,6 +19,34 @@ fn ensure_blocks_parent_dir(path: &Path) {
             let _ = fs::create_dir_all(parent);
         }
     }
+}
+
+fn backup_corrupt_blocks_file(path: &Path) {
+    if !path.exists() {
+        return;
+    }
+
+    let backup_name = format!(
+        "{}.corrupt.{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("ghostcoin_blocks.json"),
+        chrono::Utc::now().timestamp()
+    );
+    let backup_path = path.with_file_name(backup_name);
+    let _ = fs::rename(path, backup_path);
+}
+
+fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
+    ensure_blocks_parent_dir(path);
+    let tmp_path = path.with_extension("json.tmp");
+    fs::write(&tmp_path, contents)?;
+
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    fs::rename(tmp_path, path)?;
+    Ok(())
 }
 
 const SYNC_CHUNK_SIZE: usize = 128;
@@ -46,8 +75,32 @@ impl SharedChain {
             return vec![];
         }
 
-        let json = fs::read_to_string(path).unwrap_or_default();
-        let blocks: Vec<MinedBlock> = serde_json::from_str(&json).unwrap_or_default();
+        let json = match fs::read_to_string(&path) {
+            Ok(json) => json,
+            Err(e) => {
+                println!(
+                    "Unable to read block store {}: {}. Starting from an empty chain.",
+                    path.display(),
+                    e
+                );
+                Self::rebuild_chain_state(&[]);
+                return vec![];
+            }
+        };
+
+        let blocks: Vec<MinedBlock> = match serde_json::from_str(&json) {
+            Ok(blocks) => blocks,
+            Err(e) => {
+                println!(
+                    "Corrupted block store {}: {}. Backing it up and rebuilding from empty chain.",
+                    path.display(),
+                    e
+                );
+                backup_corrupt_blocks_file(&path);
+                Self::rebuild_chain_state(&[]);
+                return vec![];
+            }
+        };
         let normalized = Self::normalize_blocks(blocks);
         Self::save_to_disk(&normalized);
         Self::rebuild_chain_state(&normalized);
@@ -62,18 +115,25 @@ impl SharedChain {
         let original_len = blocks.len();
         blocks.sort_by_key(|b| b.index);
         let mut normalized: Vec<MinedBlock> = Vec::new();
+        let mut seen_hashes = HashSet::new();
+        let mut state = ChainState::new();
+        state.difficulty = ChainState::load().difficulty;
 
         for block in blocks {
-            let valid_next = match normalized.last() {
-                None => block.index == 1 && block.previous_hash == "0",
-                Some(prev) => {
-                    block.index == prev.index.saturating_add(1) && block.previous_hash == prev.hash
-                }
-            };
-
-            if valid_next {
-                normalized.push(block);
+            if !seen_hashes.insert(block.hash.clone()) {
+                continue;
             }
+
+            if let Err(reason) = Self::validate_block_candidate(&block, &normalized, &state) {
+                println!(
+                    "Discarding invalid local block #{} during normalization: {}",
+                    block.index, reason
+                );
+                continue;
+            }
+
+            Self::apply_block_to_state(&mut state, &block);
+            normalized.push(block);
         }
 
         if normalized.len() < original_len {
@@ -90,8 +150,14 @@ impl SharedChain {
     fn save_to_disk(blocks: &[MinedBlock]) {
         let path = blocks_file();
         ensure_blocks_parent_dir(&path);
-        let json = serde_json::to_string_pretty(blocks).unwrap();
-        let _ = fs::write(path, json);
+        match serde_json::to_string_pretty(blocks) {
+            Ok(json) => {
+                if let Err(e) = write_atomic(&path, &json) {
+                    println!("Failed to save blocks {}: {}", path.display(), e);
+                }
+            }
+            Err(e) => println!("Failed to serialize blocks for {}: {}", path.display(), e),
+        }
     }
 
     fn calculate_block_hash(block: &MinedBlock) -> String {
@@ -113,6 +179,10 @@ impl SharedChain {
         data.split_whitespace()
             .find_map(|part| part.strip_prefix(&prefix))
             .and_then(|raw| raw.parse::<u64>().ok())
+    }
+
+    fn claimed_reward(block: &MinedBlock) -> Option<u64> {
+        Self::parse_coinbase_field(&block.data, "reward")
     }
 
     fn validate_block_candidate(
@@ -165,7 +235,7 @@ impl SharedChain {
             }
         }
 
-        let claimed_reward = Self::parse_coinbase_field(&block.data, "reward")
+        let claimed_reward = Self::claimed_reward(block)
             .ok_or_else(|| "missing reward field in coinbase data".to_string())?;
         let expected_reward = state.current_reward();
         if claimed_reward > expected_reward {
@@ -173,6 +243,9 @@ impl SharedChain {
                 "reward {} exceeds expected max {}",
                 claimed_reward, expected_reward
             ));
+        }
+        if state.minted_supply.saturating_add(claimed_reward) > crate::chain_state::MAX_SUPPLY {
+            return Err("reward would exceed max supply".to_string());
         }
 
         if let Some(claimed_height) = Self::parse_coinbase_field(&block.data, "height") {
@@ -188,17 +261,30 @@ impl SharedChain {
     }
 
     fn apply_block_to_state(state: &mut ChainState, block: &MinedBlock) {
-        let reward = state.current_reward();
-        let minted_this_block = reward.saturating_add(block.fees_collected);
+        let claimed_reward = Self::claimed_reward(block).unwrap_or_else(|| state.current_reward());
         state.block_height = state.block_height.saturating_add(1);
         state.minted_supply = state
             .minted_supply
-            .saturating_add(minted_this_block)
+            .saturating_add(claimed_reward)
             .min(crate::chain_state::MAX_SUPPLY);
         state.last_block_hash = block.hash.clone();
         state.last_block_time = (block.timestamp / 1000).min(i64::MAX as u128) as i64;
         state.total_tx_count = state.total_tx_count.saturating_add(block.tx_count as u64);
         state.total_fees = state.total_fees.saturating_add(block.fees_collected);
+    }
+
+    fn build_chain_state(blocks: &[MinedBlock], difficulty: usize) -> Result<ChainState, String> {
+        let mut state = ChainState::new();
+        state.difficulty = difficulty;
+        let mut validated: Vec<MinedBlock> = Vec::with_capacity(blocks.len());
+
+        for block in blocks {
+            Self::validate_block_candidate(block, &validated, &state)?;
+            Self::apply_block_to_state(&mut state, block);
+            validated.push(block.clone());
+        }
+
+        Ok(state)
     }
 
     fn rebuild_chain_state(blocks: &[MinedBlock]) {
@@ -244,38 +330,94 @@ impl SharedChain {
 
         incoming.sort_by_key(|b| b.index);
         let mut chain = self.blocks.lock().unwrap();
-        let mut state = ChainState::load();
-        let mut known_hashes: std::collections::HashSet<String> =
-            chain.iter().map(|b| b.hash.clone()).collect();
-        let mut added = 0usize;
+        let difficulty = ChainState::load().difficulty;
+        let current_len = chain.len();
+        let current_tip_hash = chain.last().map(|b| b.hash.clone());
 
-        for block in incoming {
-            if known_hashes.contains(&block.hash) {
-                continue;
-            }
-            if chain.iter().any(|existing| existing.index == block.index) {
-                continue;
-            }
+        let Some(first_block) = incoming.first() else {
+            return 0;
+        };
+        let first_index = first_block.index;
+        let first_prev_hash = first_block.previous_hash.clone();
 
-            if let Err(reason) = Self::validate_block_candidate(&block, &chain, &state) {
-                println!("[sync] rejected block #{}: {}", block.index, reason);
-                continue;
-            }
+        let prefix_len = if first_index == 1 && first_prev_hash == "0" {
+            0
+        } else if let Some(anchor) = chain
+            .iter()
+            .position(|existing| existing.hash == first_prev_hash)
+        {
+            anchor.saturating_add(1)
+        } else {
+            println!(
+                "[sync] rejected incoming segment starting at #{}: unknown fork parent {}",
+                first_index, first_prev_hash
+            );
+            return 0;
+        };
 
-            known_hashes.insert(block.hash.clone());
-            chain.push(block.clone());
-            Self::apply_block_to_state(&mut state, &block);
-            added = added.saturating_add(1);
+        let mut candidate = chain[..prefix_len].to_vec();
+        candidate.extend(incoming);
+
+        let candidate_state = match Self::build_chain_state(&candidate, difficulty) {
+            Ok(state) => state,
+            Err(reason) => {
+                let rejected_index = candidate
+                    .get(prefix_len)
+                    .map(|block| block.index)
+                    .unwrap_or(first_index);
+                println!("[sync] rejected block #{}: {}", rejected_index, reason);
+                return 0;
+            }
+        };
+
+        let candidate_tip_hash = candidate.last().map(|b| b.hash.clone());
+        if candidate.len() < current_len {
+            return 0;
+        }
+        if candidate.len() == current_len && candidate_tip_hash == current_tip_hash {
+            return 0;
+        }
+        if candidate.len() == current_len && prefix_len == current_len {
+            return 0;
+        }
+        if candidate.len() == current_len && prefix_len < current_len {
+            println!(
+                "[sync] ignored competing fork of equal length at height {}",
+                current_len
+            );
+            return 0;
+        }
+        if candidate.len() <= current_len && prefix_len < current_len {
+            println!(
+                "[sync] ignored shorter fork (candidate {}, current {})",
+                candidate.len(),
+                current_len
+            );
+            return 0;
         }
 
-        if added > 0 {
-            chain.sort_by_key(|b| b.index);
-            Self::save_to_disk(&chain);
-            state.save();
-            println!("P2P sync integrated {} block(s)", added);
+        let common_prefix = chain
+            .iter()
+            .zip(candidate.iter())
+            .take_while(|(left, right)| left.hash == right.hash)
+            .count();
+        let integrated = candidate.len().saturating_sub(common_prefix);
+
+        *chain = candidate;
+        Self::save_to_disk(&chain);
+        candidate_state.save();
+
+        if prefix_len < current_len {
+            println!(
+                "[sync] adopted longer fork: replaced {} block(s), tip now #{}",
+                current_len.saturating_sub(prefix_len),
+                chain.last().map(|b| b.index).unwrap_or(0)
+            );
+        } else {
+            println!("P2P sync integrated {} block(s)", integrated);
         }
 
-        added
+        integrated
     }
 
     pub fn get_blocks_since(&self, from_index: u32, limit: usize) -> Vec<MinedBlock> {
