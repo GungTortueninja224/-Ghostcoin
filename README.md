@@ -32,7 +32,7 @@ You can also run direct node checks without opening the interactive wallet menu:
 
 ```bash
 cargo run -- connect
-cargo run -- connect shuttle.proxy.rlwy.net:48191
+cargo run -- connect ghostcoin-seed-1.fly.dev:8001
 cargo run -- status
 cargo run -- status 127.0.0.1:8001
 ```
@@ -40,7 +40,7 @@ cargo run -- status 127.0.0.1:8001
 - `connect [ADDR]`: sends `Ping` and expects `Pong`.
 - `status [ADDR]`: requests node status (`port`, `peers`, `mempool`, `blocks`).
 - Defaults:
-  - `connect` -> `shuttle.proxy.rlwy.net:48191`
+  - `connect` -> `ghostcoin-seed-1.fly.dev:8001`
   - `status` -> `127.0.0.1:8001`
 
 ### PowerShell UTF-8 (Windows)

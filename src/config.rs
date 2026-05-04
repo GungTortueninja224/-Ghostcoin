@@ -64,7 +64,7 @@ pub fn bootstrap_peers() -> Vec<String> {
 }
 
 pub fn default_seed_node() -> &'static str {
-    "shuttle.proxy.rlwy.net:48191"
+    "ghostcoin-seed-1.fly.dev:8001"
 }
 
 pub fn ensure_data_dir() -> std::io::Result<()> {

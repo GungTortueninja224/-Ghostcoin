@@ -46,7 +46,7 @@ use storage::{load_wallet, save_wallet, wallet_exists};
 use sync::{ChainSync, SharedChain};
 use tokio::time::{sleep, Duration};
 
-const DEFAULT_SEED_NODE: &str = "shuttle.proxy.rlwy.net:48191";
+const DEFAULT_SEED_NODE: &str = "ghostcoin-seed-1.fly.dev:8001";
 const DEFAULT_STATUS_NODE: &str = "127.0.0.1:8001";
 
 fn read_input(prompt: &str) -> String {

@@ -492,7 +492,7 @@ impl Cli {
                 "127.0.0.1:8001".to_string(),
                 "127.0.0.1:8002".to_string(),
                 "127.0.0.1:8003".to_string(),
-                "shuttle.proxy.rlwy.net:48191".to_string(),
+                "ghostcoin-seed-1.fly.dev:8001".to_string(),
             ],
         );
         tokio::task::block_in_place(|| {
@@ -500,7 +500,7 @@ impl Cli {
         });
         let pushed_blocks = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
-                .block_on(chain_sync.push_missing_blocks_to_peer("shuttle.proxy.rlwy.net:48191"))
+                .block_on(chain_sync.push_missing_blocks_to_peer("ghostcoin-seed-1.fly.dev:8001"))
         });
         println!("🌐 Bloc diffusé au réseau P2P");
         if pushed_blocks > 0 {

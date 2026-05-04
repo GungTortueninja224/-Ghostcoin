@@ -573,7 +573,7 @@ fn api_panel() -> String {
           <span>Use these for wallets, nodes, or dashboards</span>
         </div>
         <div class="endpoint-list">
-          <div class="endpoint">TCP -> shuttle.proxy.rlwy.net:48191</div>
+          <div class="endpoint">TCP -> ghostcoin-seed-1.fly.dev:8001</div>
           <div class="endpoint">HTTP -> ghostcoin-production.up.railway.app</div>
           <div class="endpoint">API -> ghostcoin-production.up.railway.app/api/stats</div>
           <div class="endpoint">Mempool API -> ghostcoin-production.up.railway.app/api/mempool</div>
@@ -1530,7 +1530,7 @@ async fn api_stats() -> Json<Value> {
         "mempool_count": mempool.pending_count(),
         "last_hash": state.last_block_hash,
         "status": "online",
-        "node_tcp": "shuttle.proxy.rlwy.net:48191",
+        "node_tcp": "ghostcoin-seed-1.fly.dev:8001",
         "explorer": "ghostcoin-production.up.railway.app",
     }))
 }
