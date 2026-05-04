@@ -1,14 +1,76 @@
-use axum::{response::Html, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::HeaderMap,
+    response::Html,
+    routing::{get, post},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::chain_state::ChainState;
 use crate::mempool::Mempool;
+use crate::storage::{broadcast_tx, PendingTx};
 
 struct ViewData {
     state: ChainState,
     mempool: Mempool,
 }
+
+struct FaucetState {
+    claims: Mutex<HashMap<String, u64>>,
+}
+
+impl FaucetState {
+    fn new() -> Self {
+        Self {
+            claims: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn now_secs() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    }
+
+    fn can_claim(&self, key: &str) -> bool {
+        let claims = self.claims.lock().unwrap();
+        match claims.get(key) {
+            Some(&ts) => Self::now_secs().saturating_sub(ts) >= 86_400,
+            None => true,
+        }
+    }
+
+    fn record(&self, key: &str) {
+        self.claims
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), Self::now_secs());
+    }
+}
+
+#[derive(Deserialize)]
+struct FaucetRequest {
+    address: String,
+}
+
+#[derive(Serialize)]
+struct FaucetResponse {
+    success: bool,
+    message: String,
+    tx_id: Option<String>,
+    amount: Option<u64>,
+}
+
+const FAUCET_AMOUNT: u64 = 25;
+const FAUCET_FEE: u64 = 1;
+const FAUCET_ADDRESS: &str = "faucet";
 
 impl ViewData {
     fn load() -> Self {
@@ -188,6 +250,16 @@ fn render_market_sidebar() -> String {
         <div>
           <strong>Last update</strong><br>
           <span style="color:var(--muted)" id="lastUpdate">--</span>
+        </div>
+        <div class="faucet-box">
+          <div class="section-kicker">Testnet faucet</div>
+          <strong>Claim 25 GHST</strong>
+          <p>One claim per address and per IP every 24 hours.</p>
+          <form id="faucetForm" class="faucet-form">
+            <input id="faucetAddress" type="text" placeholder="PC1-... address" autocomplete="off" />
+            <button type="submit" class="hero-btn primary faucet-btn">Claim test coins</button>
+          </form>
+          <div id="faucetMessage" class="faucet-message">Use a valid GhostCoin address to request testnet funds.</div>
         </div>
       </aside>
 "#
@@ -1207,6 +1279,52 @@ fn render_single_page(data: &ViewData) -> String {
       color: var(--accent-deep);
       font-size: 0.9rem;
     }}
+    .faucet-box {{
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(20,35,31,0.08);
+    }}
+    .faucet-box p {{
+      margin: 8px 0 14px;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 0.9rem;
+    }}
+    .faucet-form {{
+      display: grid;
+      gap: 10px;
+    }}
+    .faucet-form input {{
+      width: 100%;
+      min-height: 46px;
+      padding: 0 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(20,35,31,0.12);
+      background: rgba(255,255,255,0.92);
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+    }}
+    .faucet-form input:focus {{
+      border-color: rgba(19,156,117,0.48);
+      box-shadow: 0 0 0 4px rgba(19,156,117,0.08);
+    }}
+    .faucet-btn {{
+      width: 100%;
+    }}
+    .faucet-message {{
+      margin-top: 10px;
+      min-height: 22px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }}
+    .faucet-message.success {{
+      color: var(--accent-deep);
+    }}
+    .faucet-message.error {{
+      color: #b42318;
+    }}
     .footer {{
       display: grid;
       grid-template-columns: 1.2fr 0.8fr;
@@ -1377,6 +1495,42 @@ fn render_single_page(data: &ViewData) -> String {
         activateTab(link.dataset.tab);
       }});
     }});
+
+    const faucetForm = document.getElementById('faucetForm');
+    const faucetAddress = document.getElementById('faucetAddress');
+    const faucetMessage = document.getElementById('faucetMessage');
+
+    if (faucetForm && faucetAddress && faucetMessage) {{
+      faucetForm.addEventListener('submit', async (event) => {{
+        event.preventDefault();
+        const address = faucetAddress.value.trim();
+        if (!address) {{
+          faucetMessage.textContent = 'Enter a GhostCoin address first.';
+          faucetMessage.className = 'faucet-message error';
+          return;
+        }}
+
+        faucetMessage.textContent = 'Submitting faucet request...';
+        faucetMessage.className = 'faucet-message';
+
+        try {{
+          const res = await fetch('/api/faucet', {{
+            method: 'POST',
+            headers: {{ 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ address }})
+          }});
+          const data = await res.json();
+          faucetMessage.textContent = data.message || 'Unknown faucet response.';
+          faucetMessage.className = 'faucet-message ' + (data.success ? 'success' : 'error');
+          if (data.success) {{
+            faucetAddress.value = '';
+          }}
+        }} catch (error) {{
+          faucetMessage.textContent = 'Faucet request failed. Please try again.';
+          faucetMessage.className = 'faucet-message error';
+        }}
+      }});
+    }}
 
     async function fetchPrices() {{
       try {{
@@ -1559,6 +1713,82 @@ async fn api_mempool() -> Json<Value> {
     }))
 }
 
+fn claim_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+        })
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+async fn api_faucet(
+    State(faucet): State<Arc<FaucetState>>,
+    headers: HeaderMap,
+    Json(body): Json<FaucetRequest>,
+) -> Json<FaucetResponse> {
+    let address = body.address.trim().to_string();
+    let ip = claim_ip(&headers);
+
+    if !crate::wallet::validate_address(&address) {
+        return Json(FaucetResponse {
+            success: false,
+            message: "Invalid address.".to_string(),
+            tx_id: None,
+            amount: None,
+        });
+    }
+
+    if !faucet.can_claim(&address) {
+        return Json(FaucetResponse {
+            success: false,
+            message: "Address already claimed in the last 24h.".to_string(),
+            tx_id: None,
+            amount: None,
+        });
+    }
+
+    if !faucet.can_claim(&ip) {
+        return Json(FaucetResponse {
+            success: false,
+            message: "IP already claimed in the last 24h.".to_string(),
+            tx_id: None,
+            amount: None,
+        });
+    }
+
+    let tx_id = format!("faucet_{:016x}", rand::random::<u64>());
+    let tx = PendingTx {
+        tx_id: tx_id.clone(),
+        sender: FAUCET_ADDRESS.to_string(),
+        receiver: address.clone(),
+        amount: FAUCET_AMOUNT,
+        fee: FAUCET_FEE,
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        claimed: false,
+    };
+
+    broadcast_tx(tx);
+    faucet.record(&address);
+    faucet.record(&ip);
+
+    Json(FaucetResponse {
+        success: true,
+        message: format!("{} GHST sent to {}", FAUCET_AMOUNT, address),
+        tx_id: Some(tx_id),
+        amount: Some(FAUCET_AMOUNT),
+    })
+}
+
 async fn health() -> Json<Value> {
     Json(json!({
         "status": "ok",
@@ -1567,6 +1797,7 @@ async fn health() -> Json<Value> {
 }
 
 pub async fn start_web_server_on_port(port: u16) {
+    let faucet_state = Arc::new(FaucetState::new());
     let app = Router::new()
         .route("/", get(home))
         .route("/health", get(health))
@@ -1580,7 +1811,9 @@ pub async fn start_web_server_on_port(port: u16) {
         .route("/faq", get(home))
         .route("/api", get(home))
         .route("/api/stats", get(api_stats))
-        .route("/api/mempool", get(api_mempool));
+        .route("/api/mempool", get(api_mempool))
+        .route("/api/faucet", post(api_faucet))
+        .with_state(faucet_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("Web server demarre sur port {}", port);
