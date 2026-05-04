@@ -655,6 +655,172 @@ fn api_panel() -> String {
     .to_string()
 }
 
+fn render_join_page() -> String {
+    r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join GhostCoin Testnet</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0a0e;
+    color: #e0e0e0;
+    font-family: "Courier New", monospace;
+    padding: 2rem 1rem;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { color: #00ff88; font-size: 1.9rem; margin-bottom: 0.35rem; }
+  .sub { color: #6b7280; font-size: 0.9rem; margin-bottom: 2.2rem; }
+  h2 {
+    color: #59f2b0;
+    font-size: 1rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin: 2rem 0 0.8rem;
+    border-bottom: 1px solid rgba(0,255,136,0.14);
+    padding-bottom: 0.45rem;
+  }
+  p { color: #a8afb8; line-height: 1.75; margin-bottom: 1rem; }
+  pre {
+    background: #111118;
+    border: 1px solid rgba(0,255,136,0.14);
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+    color: #00ff88;
+    font-size: 0.85rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+  }
+  .badge {
+    display: inline-block;
+    background: rgba(0,255,136,0.08);
+    border: 1px solid rgba(0,255,136,0.2);
+    border-radius: 4px;
+    padding: 3px 9px;
+    font-size: 0.75rem;
+    color: #8bf8c7;
+    margin-bottom: 1rem;
+  }
+  a { color: #00ff88; }
+  .nav {
+    display: flex;
+    gap: 1.2rem;
+    margin-bottom: 2rem;
+    font-size: 0.88rem;
+    flex-wrap: wrap;
+  }
+  .nav a {
+    color: rgba(0,255,136,0.72);
+    text-decoration: none;
+  }
+  .nav a:hover { color: #00ff88; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+  td, th {
+    border: 1px solid rgba(0,255,136,0.14);
+    padding: 0.6rem 0.8rem;
+    font-size: 0.85rem;
+    text-align: left;
+  }
+  th { color: #8bf8c7; background: #111118; }
+  td { color: #b4bcc6; }
+  code { color: #9ef8d0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Join GhostCoin Testnet</h1>
+  <p class="sub">GhostCoin Testnet v1 — privacy-first L1 blockchain in Rust</p>
+
+  <nav class="nav">
+    <a href="/">Explorer</a>
+    <a href="/faucet">Faucet</a>
+    <a href="/join">How to join</a>
+    <a href="https://github.com/GungTortueninja224/-Ghostcoin" target="_blank" rel="noreferrer">GitHub</a>
+  </nav>
+
+  <div class="badge">TESTNET v1 — faucet active · public bootstrap active</div>
+
+  <h2>1. Requirements</h2>
+  <p>You need Git and Rust installed on your machine. Linux, macOS, and Windows PowerShell are all fine.</p>
+  <pre>curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source ~/.cargo/env</pre>
+
+  <h2>2. Clone and build</h2>
+  <pre>git clone https://github.com/GungTortueninja224/-Ghostcoin.git
+cd -Ghostcoin
+cargo build --release</pre>
+  <p>First build usually takes a few minutes.</p>
+
+  <h2>3. Start the wallet and sync from the testnet seeds</h2>
+  <p>On Linux or macOS:</p>
+  <pre>GHOSTCOIN_BOOTSTRAP_PEERS="168.220.83.3:8001,137.66.10.29:8001" \
+cargo run --release</pre>
+  <p>On Windows PowerShell:</p>
+  <pre>$env:GHOSTCOIN_BOOTSTRAP_PEERS="168.220.83.3:8001,137.66.10.29:8001"
+cargo run --release</pre>
+  <p>The interactive wallet starts local nodes automatically and syncs from the public seeds.</p>
+
+  <h2>4. Check network status</h2>
+  <pre>cargo run --release -- status 168.220.83.3:8001</pre>
+  <p>You should see the current public block height and mempool state.</p>
+
+  <h2>5. Claim test GHST</h2>
+  <p>Use the faucet to receive 25 GHST on a valid GhostCoin address:</p>
+  <pre>curl -X POST https://ghostcoin-production.up.railway.app/api/faucet \
+  -H "Content-Type: application/json" \
+  -d '{"address":"YOUR_GHST_ADDRESS"}'</pre>
+  <p>Or use the faucet form directly on the <a href="/faucet">main explorer page</a>. Limit: 1 claim per address and per IP every 24 hours.</p>
+
+  <h2>6. Mine a block</h2>
+  <p>Open the interactive wallet and choose <code>E</code> to mine a block.</p>
+  <pre>Wallet menu -> E -> Mine a block</pre>
+  <p>Successful blocks earn 65 GHST in the current era. Reward halves every 210,000 blocks.</p>
+
+  <h2>7. Send a transaction</h2>
+  <p>Open the interactive wallet and choose <code>3</code> to send GHST.</p>
+  <pre>Wallet menu -> 3 -> Enter recipient -> Enter amount</pre>
+
+  <h2>Network info</h2>
+  <table>
+    <tr><th>Parameter</th><th>Value</th></tr>
+    <tr><td>Network</td><td>GhostCoin Testnet v1</td></tr>
+    <tr><td>Token</td><td>GHST</td></tr>
+    <tr><td>Consensus</td><td>Proof of Work (SHA-256)</td></tr>
+    <tr><td>Max supply</td><td>50,000,000 GHST</td></tr>
+    <tr><td>Block reward</td><td>65 GHST</td></tr>
+    <tr><td>Halving</td><td>Every 210,000 blocks</td></tr>
+    <tr><td>P2P port</td><td>8001</td></tr>
+    <tr><td>Seed 1</td><td>168.220.83.3:8001</td></tr>
+    <tr><td>Seed 2</td><td>137.66.10.29:8001</td></tr>
+    <tr><td>Explorer</td><td><a href="/">ghostcoin-production.up.railway.app</a></td></tr>
+  </table>
+
+  <h2>Privacy features (v1)</h2>
+  <table>
+    <tr><th>Feature</th><th>Status</th></tr>
+    <tr><td>Stealth addresses</td><td>Active</td></tr>
+    <tr><td>Ring signatures</td><td>Active</td></tr>
+    <tr><td>Dandelion++ propagation</td><td>Active</td></tr>
+    <tr><td>zk-SNARKs</td><td>Roadmap v2</td></tr>
+  </table>
+
+  <h2>Resources</h2>
+  <p>
+    <a href="https://github.com/GungTortueninja224/-Ghostcoin/blob/main/docs/whitepaper/GhostCoin_Whitepaper_v0.1.pdf" target="_blank" rel="noreferrer">Whitepaper v0.1 (PDF)</a>
+    · <a href="https://github.com/GungTortueninja224/-Ghostcoin" target="_blank" rel="noreferrer">GitHub</a>
+    · <a href="/api/stats">API stats</a>
+  </p>
+
+</div>
+</body>
+</html>"#
+    .to_string()
+}
+
 fn render_single_page(data: &ViewData) -> String {
     let panels = [
         render_panel("overview", true, overview_panel(data)),
@@ -1668,6 +1834,10 @@ async fn home() -> Html<String> {
     Html(render_single_page(&data))
 }
 
+async fn join() -> Html<String> {
+    Html(render_join_page())
+}
+
 async fn api_stats() -> Json<Value> {
     let state = ChainState::load();
     let mempool = Mempool::load();
@@ -1800,6 +1970,8 @@ pub async fn start_web_server_on_port(port: u16) {
     let faucet_state = Arc::new(FaucetState::new());
     let app = Router::new()
         .route("/", get(home))
+        .route("/join", get(join))
+        .route("/faucet", get(home))
         .route("/health", get(health))
         .route("/blocks", get(home))
         .route("/mempool", get(home))
