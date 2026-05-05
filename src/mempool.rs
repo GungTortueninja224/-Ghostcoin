@@ -1,14 +1,16 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 pub const MAX_BLOCK_TXS: usize = 100;
-pub const TX_EXPIRY_SECS: i64 = 86_400;
+pub const TX_EXPIRY_SECS: i64 = 3_600;
 pub const CLAIM_RETENTION_SECS: i64 = 604_800;
 pub const MAX_MEMPOOL_TXS: usize = 10_000;
+pub const MAX_RELAY_COUNT: u32 = 16;
 
 fn mempool_file() -> PathBuf {
     crate::config::data_dir().join("ghostcoin_mempool.json")
@@ -48,6 +50,11 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
     }
     fs::rename(tmp_path, path)?;
     Ok(())
+}
+
+fn mempool_file_mutex() -> &'static Mutex<()> {
+    static MEMPOOL_FILE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+    MEMPOOL_FILE_MUTEX.get_or_init(|| Mutex::new(()))
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -134,7 +141,7 @@ pub struct Mempool {
 }
 
 impl Mempool {
-    pub fn load() -> Self {
+    fn load_unlocked() -> Self {
         let path = mempool_file();
         ensure_mempool_parent_dir(&path);
         if !path.exists() {
@@ -169,7 +176,8 @@ impl Mempool {
         let mut txs = Vec::new();
         let mut repaired = false;
 
-        for tx in parsed {
+        for mut tx in parsed {
+            tx.relay_count = tx.relay_count.min(MAX_RELAY_COUNT);
             if !seen.insert(tx.tx_id.clone()) || tx.validate().is_err() || tx.should_prune() {
                 repaired = true;
                 continue;
@@ -185,12 +193,19 @@ impl Mempool {
 
         let mempool = Self { txs };
         if repaired {
-            mempool.save();
+            mempool.save_unlocked();
         }
         mempool
     }
 
-    pub fn save(&self) {
+    pub fn load() -> Self {
+        let _guard = mempool_file_mutex()
+            .lock()
+            .expect("mempool file mutex poisoned");
+        Self::load_unlocked()
+    }
+
+    fn save_unlocked(&self) {
         if let Ok(json) = serde_json::to_string_pretty(&self.txs) {
             let path = mempool_file();
             if let Err(e) = write_atomic(&path, &json) {
@@ -199,8 +214,18 @@ impl Mempool {
         }
     }
 
-    pub fn add(&mut self, tx: MempoolTx) -> bool {
-        self.purge_expired();
+    pub fn save(&self) {
+        let _guard = mempool_file_mutex()
+            .lock()
+            .expect("mempool file mutex poisoned");
+        self.save_unlocked();
+    }
+
+    fn add_in_memory(&mut self, tx: MempoolTx) -> bool {
+        let removed = self.prune_expired_in_memory();
+        if removed > 0 {
+            println!("{} TX supprimÃ©es du mempool", removed);
+        }
         if let Err(reason) = tx.validate() {
             println!("Mempool: {}", reason);
             return false;
@@ -220,8 +245,27 @@ impl Mempool {
             tx.priority_label()
         );
         self.txs.push(tx);
-        self.save();
         true
+    }
+
+    pub fn add(&mut self, tx: MempoolTx) -> bool {
+        let added = self.add_in_memory(tx);
+        if added {
+            self.save();
+        }
+        added
+    }
+
+    pub fn insert_persisted(tx: MempoolTx) -> bool {
+        let _guard = mempool_file_mutex()
+            .lock()
+            .expect("mempool file mutex poisoned");
+        let mut mempool = Self::load_unlocked();
+        let added = mempool.add_in_memory(tx);
+        if added {
+            mempool.save_unlocked();
+        }
+        added
     }
 
     pub fn sorted_by_priority(&self) -> Vec<&MempoolTx> {
@@ -256,7 +300,7 @@ impl Mempool {
         self.save();
     }
 
-    pub fn purge_expired(&mut self) -> usize {
+    fn prune_expired_in_memory(&mut self) -> usize {
         let before = self.txs.len();
         self.txs.retain(|tx| !tx.should_prune());
         let removed = before - self.txs.len();

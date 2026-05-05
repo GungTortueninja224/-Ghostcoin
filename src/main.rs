@@ -55,9 +55,15 @@ fn default_seed_nodes() -> Vec<String> {
 
 fn read_input(prompt: &str) -> String {
     print!("{}", prompt);
-    io::stdout().flush().unwrap();
+    if let Err(e) = io::stdout().flush() {
+        eprintln!("failed to flush stdout: {}", e);
+        return String::new();
+    }
     let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
+    if let Err(e) = io::stdin().read_line(&mut input) {
+        eprintln!("failed to read stdin: {}", e);
+        return String::new();
+    }
     input.trim().to_string()
 }
 
@@ -152,7 +158,10 @@ async fn run_cli_command(args: &[String]) -> bool {
 
 #[tokio::main]
 async fn main() {
-    config::ensure_data_dir().expect("Failed to create data directory");
+    if let Err(e) = config::ensure_data_dir() {
+        eprintln!("failed to create data directory: {}", e);
+        return;
+    }
 
     let args: Vec<String> = env::args().collect();
     if run_cli_command(&args).await {

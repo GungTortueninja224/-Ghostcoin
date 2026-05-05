@@ -300,7 +300,10 @@ impl SharedChain {
     }
 
     pub fn add_block(&self, block: MinedBlock) {
-        let mut chain = self.blocks.lock().unwrap();
+        let mut chain = self
+            .blocks
+            .lock()
+            .expect("shared chain mutex poisoned");
         let mut state = ChainState::load();
 
         if chain
@@ -329,7 +332,10 @@ impl SharedChain {
         }
 
         incoming.sort_by_key(|b| b.index);
-        let mut chain = self.blocks.lock().unwrap();
+        let mut chain = self
+            .blocks
+            .lock()
+            .expect("shared chain mutex poisoned");
         let difficulty = ChainState::load().difficulty;
         let current_len = chain.len();
         let current_tip_hash = chain.last().map(|b| b.hash.clone());
@@ -421,7 +427,10 @@ impl SharedChain {
     }
 
     pub fn get_blocks_since(&self, from_index: u32, limit: usize) -> Vec<MinedBlock> {
-        let chain = self.blocks.lock().unwrap();
+        let chain = self
+            .blocks
+            .lock()
+            .expect("shared chain mutex poisoned");
         let capped = limit.clamp(1, SYNC_CHUNK_MAX);
         chain
             .iter()
@@ -434,17 +443,23 @@ impl SharedChain {
     pub fn has_block_hash(&self, hash: &str) -> bool {
         self.blocks
             .lock()
-            .unwrap()
+            .expect("shared chain mutex poisoned")
             .iter()
             .any(|block| block.hash == hash)
     }
 
     pub fn length(&self) -> usize {
-        self.blocks.lock().unwrap().len()
+        self.blocks
+            .lock()
+            .expect("shared chain mutex poisoned")
+            .len()
     }
 
     pub fn last_hash(&self) -> String {
-        let chain = self.blocks.lock().unwrap();
+        let chain = self
+            .blocks
+            .lock()
+            .expect("shared chain mutex poisoned");
         chain
             .last()
             .map(|b| b.hash.clone())
@@ -452,7 +467,10 @@ impl SharedChain {
     }
 
     pub fn last_index(&self) -> u32 {
-        let chain = self.blocks.lock().unwrap();
+        let chain = self
+            .blocks
+            .lock()
+            .expect("shared chain mutex poisoned");
         chain.last().map(|b| b.index).unwrap_or(0)
     }
 
@@ -578,7 +596,18 @@ impl ChainSync {
                 break;
             }
 
-            let added = self.chain.merge_blocks_from_network(blocks);
+            let chain = self.chain.clone();
+            let added = match tokio::task::spawn_blocking(move || {
+                chain.merge_blocks_from_network(blocks)
+            })
+            .await
+            {
+                Ok(added) => added,
+                Err(e) => {
+                    println!("[sync] merge task failed: {}", e);
+                    break;
+                }
+            };
             if added == 0 {
                 break;
             }

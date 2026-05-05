@@ -40,7 +40,10 @@ impl FaucetState {
     }
 
     fn can_claim(&self, key: &str) -> bool {
-        let claims = self.claims.lock().unwrap();
+        let claims = self
+            .claims
+            .lock()
+            .expect("faucet claims mutex poisoned");
         match claims.get(key) {
             Some(&ts) => Self::now_secs().saturating_sub(ts) >= 86_400,
             None => true,
@@ -50,7 +53,7 @@ impl FaucetState {
     fn record(&self, key: &str) {
         self.claims
             .lock()
-            .unwrap()
+            .expect("faucet claims mutex poisoned")
             .insert(key.to_string(), Self::now_secs());
     }
 }
@@ -1830,7 +1833,13 @@ fn render_single_page(data: &ViewData) -> String {
 }
 
 async fn home() -> Html<String> {
-    let data = ViewData::load();
+    let data = match tokio::task::spawn_blocking(ViewData::load).await {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("failed to load explorer view data: {}", e);
+            ViewData::load()
+        }
+    };
     Html(render_single_page(&data))
 }
 
@@ -1839,8 +1848,13 @@ async fn join() -> Html<String> {
 }
 
 async fn api_stats() -> Json<Value> {
-    let state = ChainState::load();
-    let mempool = Mempool::load();
+    let (state, mempool) = match tokio::task::spawn_blocking(|| (ChainState::load(), Mempool::load())).await {
+        Ok(tuple) => tuple,
+        Err(e) => {
+            eprintln!("failed to load api stats data: {}", e);
+            (ChainState::load(), Mempool::load())
+        }
+    };
     Json(json!({
         "name": "GhostCoin",
         "symbol": "GHST",
@@ -1860,7 +1874,13 @@ async fn api_stats() -> Json<Value> {
 }
 
 async fn api_mempool() -> Json<Value> {
-    let mempool = Mempool::load();
+    let mempool = match tokio::task::spawn_blocking(Mempool::load).await {
+        Ok(mempool) => mempool,
+        Err(e) => {
+            eprintln!("failed to load mempool data: {}", e);
+            Mempool::load()
+        }
+    };
     let txs: Vec<Value> = mempool
         .sorted_by_priority()
         .iter()
@@ -1947,7 +1967,14 @@ async fn api_faucet(
         claimed: false,
     };
 
-    broadcast_tx(tx);
+    if let Err(e) = tokio::task::spawn_blocking(move || broadcast_tx(tx)).await {
+        return Json(FaucetResponse {
+            success: false,
+            message: format!("Node error: {}", e),
+            tx_id: None,
+            amount: None,
+        });
+    }
     faucet.record(&address);
     faucet.record(&ip);
 
@@ -1990,8 +2017,17 @@ pub async fn start_web_server_on_port(port: u16) {
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     println!("Web server demarre sur port {}", port);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(listener) => listener,
+        Err(e) => {
+            eprintln!("failed to bind web server on {}: {}", addr, e);
+            return;
+        }
+    };
+
+    if let Err(e) = axum::serve(listener, app).await {
+        eprintln!("web server stopped with error on {}: {}", addr, e);
+    }
 }
 
 pub async fn start_web_server() {

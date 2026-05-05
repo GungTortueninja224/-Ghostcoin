@@ -3,6 +3,7 @@ use crate::mempool::{Mempool, MempoolTx};
 use crate::sync::{ChainSync, SharedChain};
 use crate::config;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -13,6 +14,7 @@ use tokio::time::{timeout, Duration};
 pub struct NodeState {
     pub port: u16,
     pub peers: Arc<Mutex<Vec<String>>>,
+    pub peer_sessions: Arc<Mutex<HashMap<String, String>>>,
     pub block_count: Arc<Mutex<u32>>,
     pub chain: SharedChain,
 }
@@ -23,27 +25,52 @@ impl NodeState {
         Self {
             port,
             peers: Arc::new(Mutex::new(vec![])),
+            peer_sessions: Arc::new(Mutex::new(HashMap::new())),
             block_count: Arc::new(Mutex::new(initial_count)),
             chain,
         }
     }
 
     pub fn add_peer(&self, peer: &str) {
-        let mut peers = self.peers.lock().unwrap();
+        let mut peers = self.peers.lock().expect("node peers mutex poisoned");
         if !peers.contains(&peer.to_string()) && peers.len() < 50 {
             peers.push(peer.to_string());
         }
     }
 
     pub fn remove_peer(&self, peer: &str) {
-        let mut peers = self.peers.lock().unwrap();
+        let mut peers = self.peers.lock().expect("node peers mutex poisoned");
         peers.retain(|p| p != peer);
+    }
+
+    pub fn register_peer_session(&self, session_addr: &str, canonical_peer: &str) {
+        let mut sessions = self
+            .peer_sessions
+            .lock()
+            .expect("peer session registry mutex poisoned");
+        sessions.insert(session_addr.to_string(), canonical_peer.to_string());
+    }
+
+    pub fn remove_peer_session(&self, session_addr: &str) {
+        self.remove_peer(session_addr);
+
+        let peer_to_remove = {
+            let mut sessions = self
+                .peer_sessions
+                .lock()
+                .expect("peer session registry mutex poisoned");
+            sessions.remove(session_addr)
+        };
+
+        if let Some(peer) = peer_to_remove {
+            self.remove_peer(&peer);
+        }
     }
 
     pub fn get_peers(&self) -> Vec<String> {
         self.peers
             .lock()
-            .unwrap()
+            .expect("node peers mutex poisoned")
             .iter()
             .take(20)
             .cloned()
@@ -51,16 +78,19 @@ impl NodeState {
     }
 
     pub fn knows_peer(&self, peer: &str) -> bool {
-        self.peers.lock().unwrap().iter().any(|p| p == peer)
+        self.peers
+            .lock()
+            .expect("node peers mutex poisoned")
+            .iter()
+            .any(|p| p == peer)
     }
 
     pub fn add_to_mempool(&self, tx: MempoolTx) -> bool {
-        let mut mempool = Mempool::load();
-        mempool.add(tx)
+        Mempool::insert_persisted(tx)
     }
 
     pub fn peer_count(&self) -> usize {
-        self.peers.lock().unwrap().len()
+        self.peers.lock().expect("node peers mutex poisoned").len()
     }
 
     pub fn mempool_size(&self) -> usize {
@@ -68,12 +98,18 @@ impl NodeState {
     }
 
     pub fn block_count(&self) -> u32 {
-        let in_memory = *self.block_count.lock().unwrap();
+        let in_memory = *self
+            .block_count
+            .lock()
+            .expect("node block_count mutex poisoned");
         in_memory.max(self.chain.last_index())
     }
 
     pub fn set_block_count(&self, count: u32) {
-        let mut current = self.block_count.lock().unwrap();
+        let mut current = self
+            .block_count
+            .lock()
+            .expect("node block_count mutex poisoned");
         if count > *current {
             *current = count;
         }
@@ -225,6 +261,8 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
             }
         }
     }
+
+    state.remove_peer_session(&peer_addr);
 }
 
 async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -> Option<NodeMessage> {
@@ -237,6 +275,7 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             let canonical = canonical_peer_addr(peer_addr, from_port);
             if let Some(canonical) = canonical.clone() {
                 state.add_peer(&canonical);
+                state.register_peer_session(peer_addr, &canonical);
             }
             println!("Node {}: hello received", state.port);
 
@@ -268,8 +307,27 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
         }
         NodeMessage::NewTx { tx } => {
             let tx_id = tx.tx_id.clone();
-            let added = state.add_to_mempool(tx.clone());
-            let mempool_size = state.mempool_size();
+            let state_for_store = state.clone();
+            let tx_for_store = tx.clone();
+            let added = match tokio::task::spawn_blocking(move || {
+                state_for_store.add_to_mempool(tx_for_store)
+            })
+            .await
+            {
+                Ok(added) => added,
+                Err(e) => {
+                    println!("Node {}: mempool store task failed: {}", state.port, e);
+                    false
+                }
+            };
+            let state_for_size = state.clone();
+            let mempool_size = match tokio::task::spawn_blocking(move || state_for_size.mempool_size()).await {
+                Ok(size) => size,
+                Err(e) => {
+                    println!("Node {}: mempool size task failed: {}", state.port, e);
+                    0
+                }
+            };
             println!(
                 "Node {}: tx {} {} (mempool {})",
                 state.port,
@@ -278,13 +336,20 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
                 mempool_size
             );
 
-            if added {
+            if added && tx.relay_count < crate::mempool::MAX_RELAY_COUNT {
+                let mut forwarded_tx = tx.clone();
+                forwarded_tx.relay_count = forwarded_tx
+                    .relay_count
+                    .saturating_add(1)
+                    .min(crate::mempool::MAX_RELAY_COUNT);
                 let peers = state.get_peers();
                 for peer in peers {
                     if peer != peer_addr {
                         send_to_node_fire_and_forget(
                             &peer,
-                            &NodeMessage::NewTx { tx: tx.clone() },
+                            &NodeMessage::NewTx {
+                                tx: forwarded_tx.clone(),
+                            },
                         )
                         .await;
                     }
@@ -309,7 +374,19 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
         NodeMessage::NewBlockFull { block } => {
             let block_hash = block.hash.clone();
             let already_known = state.chain.has_block_hash(&block_hash);
-            let added = state.chain.merge_blocks_from_network(vec![block.clone()]);
+            let chain = state.chain.clone();
+            let block_for_merge = block.clone();
+            let added = match tokio::task::spawn_blocking(move || {
+                chain.merge_blocks_from_network(vec![block_for_merge])
+            })
+            .await
+            {
+                Ok(added) => added,
+                Err(e) => {
+                    println!("Node {}: block merge task failed: {}", state.port, e);
+                    0
+                }
+            };
 
             if added > 0 {
                 let tip = state.chain.last_index();
@@ -318,7 +395,11 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             }
 
             if !already_known && added > 0 {
-                let peers = state.peers.lock().unwrap().clone();
+                let peers = state
+                    .peers
+                    .lock()
+                    .expect("node peers mutex poisoned")
+                    .clone();
                 for peer in peers {
                     if peer == peer_addr {
                         continue;
@@ -353,7 +434,15 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
         }
         NodeMessage::Blocks { blocks } => {
             println!("DEBUG Blocks recus: {} blocs", blocks.len());
-            let added = state.chain.merge_blocks_from_network(blocks);
+            let chain = state.chain.clone();
+            let added = match tokio::task::spawn_blocking(move || chain.merge_blocks_from_network(blocks)).await
+            {
+                Ok(added) => added,
+                Err(e) => {
+                    println!("Node {}: batch merge task failed: {}", state.port, e);
+                    0
+                }
+            };
             if added > 0 {
                 let tip = state.chain.last_index();
                 state.set_block_count(tip);

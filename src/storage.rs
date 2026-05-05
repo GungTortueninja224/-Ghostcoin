@@ -252,9 +252,8 @@ fn propagate_pending_tx(tx: &MempoolTx) {
 }
 
 pub fn broadcast_tx(tx: PendingTx) {
-    let mut mempool = Mempool::load();
     let mtx = MempoolTx::new(&tx.tx_id, &tx.sender, &tx.receiver, tx.amount, tx.fee);
-    let added = mempool.add(mtx.clone());
+    let added = Mempool::insert_persisted(mtx.clone());
 
     if added {
         crate::logger::log_tx(&format!(

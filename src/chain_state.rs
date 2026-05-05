@@ -122,16 +122,20 @@ impl ChainState {
     }
 
     pub fn current_reward(&self) -> u64 {
-        let halvings = self.block_height / HALVING_INTERVAL;
-        if halvings >= 64 {
-            return 0;
-        }
-        let reward = INITIAL_REWARD >> halvings;
+        let reward = self.block_reward_at(self.block_height);
         if self.minted_supply.saturating_add(reward) > MAX_SUPPLY {
             MAX_SUPPLY - self.minted_supply
         } else {
             reward
         }
+    }
+
+    pub fn block_reward_at(&self, block_height: u64) -> u64 {
+        let halvings = block_height / HALVING_INTERVAL;
+        if halvings >= 64 {
+            return 0;
+        }
+        INITIAL_REWARD >> halvings
     }
 
     pub fn remaining_supply(&self) -> u64 {

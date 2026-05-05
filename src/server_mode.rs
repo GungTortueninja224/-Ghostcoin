@@ -125,11 +125,13 @@ pub async fn run_server_mode() {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             tick += 1;
-            let state = ChainState::load();
-            println!(
-                "[{} min] Height: #{} | Supply: {} GHST",
-                tick, state.block_height, state.minted_supply
-            );
+            match tokio::task::spawn_blocking(ChainState::load).await {
+                Ok(state) => println!(
+                    "[{} min] Height: #{} | Supply: {} GHST",
+                    tick, state.block_height, state.minted_supply
+                ),
+                Err(e) => eprintln!("failed to refresh chain state ticker: {}", e),
+            }
         }
     });
 
