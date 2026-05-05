@@ -242,7 +242,9 @@ async fn handle_peer(mut socket: TcpStream, peer_addr: String, state: NodeState)
     loop {
         match timeout(Duration::from_secs(8), read_message(&mut socket)).await {
             Ok(Ok(msg)) => {
-                println!("Message received from {}", peer_addr);
+                if config::debug_enabled() {
+                    println!("Message received from {}", peer_addr);
+                }
                 let response = process_message(msg, &state, &peer_addr).await;
                 if let Some(resp) = response {
                     if let Err(e) = write_message(&mut socket, &resp).await {
@@ -279,7 +281,9 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
                 state.add_peer(&canonical);
                 state.register_peer_session(peer_addr, &canonical);
             }
-            println!("Node {}: hello received", state.port);
+            if config::debug_enabled() {
+                println!("Node {}: hello received", state.port);
+            }
 
             if height > state.chain.last_index() {
                 let sync_peer = canonical.unwrap_or_else(|| peer_addr.to_string());
@@ -451,7 +455,9 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             Some(NodeMessage::Blocks { blocks })
         }
         NodeMessage::Blocks { blocks } => {
-            println!("DEBUG Blocks recus: {} blocs", blocks.len());
+            if config::debug_enabled() {
+                println!("DEBUG Blocks recus: {} blocs", blocks.len());
+            }
             let chain = state.chain.clone();
             let added = match tokio::task::spawn_blocking(move || chain.merge_blocks_from_network(blocks)).await
             {

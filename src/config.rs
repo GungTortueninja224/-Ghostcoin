@@ -63,6 +63,13 @@ pub fn bootstrap_peers() -> Vec<String> {
         .unwrap_or_default()
 }
 
+pub fn debug_enabled() -> bool {
+    matches!(
+        std::env::var("GHOSTCOIN_DEBUG"),
+        Ok(ref v) if v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes")
+    )
+}
+
 pub fn default_seed_node() -> &'static str {
     "168.220.83.3:8001"
 }
