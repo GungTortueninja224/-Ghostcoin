@@ -374,6 +374,16 @@ async fn main() {
         println!("Sync P2P : aucun nouveau bloc importe");
     }
 
+    let synced_mempool = bootstrap_sync.sync_mempool_from_peers().await;
+    if synced_mempool > 0 {
+        println!(
+            "Sync mempool terminee : {} transaction(s) pending importe(s)",
+            synced_mempool
+        );
+    } else {
+        println!("Sync mempool : aucune transaction pending importee");
+    }
+
     let pushed_blocks = bootstrap_sync.push_missing_blocks_to_peers().await;
     if pushed_blocks > 0 {
         println!(
@@ -381,6 +391,24 @@ async fn main() {
             pushed_blocks
         );
     }
+
+    let background_chain = shared_chain.clone();
+    let background_peers = bootstrap_sync.peers.clone();
+    tokio::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(10)).await;
+            let sync = ChainSync::new_with_chain(background_chain.clone(), background_peers.clone());
+            let _ = sync.sync_from_peers().await;
+            let synced_mempool = sync.sync_mempool_from_peers().await;
+            if synced_mempool > 0 {
+                println!(
+                    "Background mempool sync: {} transaction(s) pending importee(s)",
+                    synced_mempool
+                );
+            }
+            let _ = sync.push_missing_blocks_to_peers().await;
+        }
+    });
 
     for port in [8001u16, 8002, 8003] {
         let addr = format!("127.0.0.1:{}", port);

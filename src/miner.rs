@@ -1,7 +1,8 @@
 use crate::chain_state::{ChainState, MAX_SUPPLY};
+use crate::config;
 use crate::logger::log_mining;
 use crate::mempool::Mempool;
-use crate::sync::SharedChain;
+use crate::sync::{ChainSync, SharedChain};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -34,6 +35,36 @@ impl Miner {
     }
 
     pub fn mine_block(&mut self, chain: &SharedChain) -> MinedBlock {
+        let mut sync_peers = config::default_seed_nodes();
+        sync_peers.extend(config::bootstrap_peers());
+        if !sync_peers.is_empty() {
+            if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                let sync = ChainSync::new_with_chain(chain.clone(), sync_peers.clone());
+                let sync_handle = handle.clone();
+                let imported_blocks = tokio::task::block_in_place(move || {
+                    sync_handle.block_on(sync.sync_from_peers())
+                });
+                if imported_blocks > 0 {
+                    println!(
+                        "Pre-mining sync imported {} block(s)",
+                        imported_blocks
+                    );
+                }
+
+                let mempool_sync = ChainSync::new_with_chain(chain.clone(), sync_peers);
+                let mempool_handle = handle.clone();
+                let imported_mempool = tokio::task::block_in_place(move || {
+                    mempool_handle.block_on(mempool_sync.sync_mempool_from_peers())
+                });
+                if imported_mempool > 0 {
+                    println!(
+                        "Pre-mining mempool sync imported {} pending tx",
+                        imported_mempool
+                    );
+                }
+            }
+        }
+
         let state = ChainState::load();
         let reward = state.current_reward();
         let index = chain.last_index().saturating_add(1);

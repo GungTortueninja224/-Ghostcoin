@@ -100,14 +100,25 @@ pub async fn run_server_mode() {
     } else {
         println!("Bootstrap peers: {}", bootstrap_peers.join(", "));
         let bootstrap_chain = node.chain.clone();
+        let initial_peers = bootstrap_peers.clone();
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-            let sync = ChainSync::new_with_chain(bootstrap_chain, bootstrap_peers);
+            let sync = ChainSync::new_with_chain(bootstrap_chain, initial_peers);
             let added = sync.sync_from_peers().await;
             if added > 0 {
                 println!("Bootstrap recovered {} block(s)", added);
             } else {
                 println!("Bootstrap found no new blocks");
+            }
+
+            let mempool_added = sync.sync_mempool_from_peers().await;
+            if mempool_added > 0 {
+                println!(
+                    "Bootstrap recovered {} pending transaction(s)",
+                    mempool_added
+                );
+            } else {
+                println!("Bootstrap found no new mempool transactions");
             }
 
             let pushed = sync.push_missing_blocks_to_peers().await;
@@ -116,6 +127,24 @@ pub async fn run_server_mode() {
                     "Bootstrap backfilled {} block(s) to lagging peer(s)",
                     pushed
                 );
+            }
+        });
+
+        let periodic_chain = node.chain.clone();
+        let periodic_peers = bootstrap_peers.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                let sync = ChainSync::new_with_chain(periodic_chain.clone(), periodic_peers.clone());
+                let _ = sync.sync_from_peers().await;
+                let mempool_added = sync.sync_mempool_from_peers().await;
+                if mempool_added > 0 {
+                    println!(
+                        "Periodic bootstrap imported {} pending transaction(s)",
+                        mempool_added
+                    );
+                }
+                let _ = sync.push_missing_blocks_to_peers().await;
             }
         });
     }

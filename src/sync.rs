@@ -1,5 +1,6 @@
 use crate::chain_state::ChainState;
 use crate::config;
+use crate::mempool::Mempool;
 use crate::miner::MinedBlock;
 use crate::node::{send_to_node, send_to_node_fire_and_forget, NodeMessage};
 use sha2::{Digest, Sha256};
@@ -51,6 +52,7 @@ fn write_atomic(path: &Path, contents: &str) -> std::io::Result<()> {
 
 const SYNC_CHUNK_SIZE: usize = 128;
 const SYNC_CHUNK_MAX: usize = 512;
+const MEMPOOL_SYNC_LIMIT: usize = 2_048;
 
 #[derive(Clone)]
 pub struct SharedChain {
@@ -542,6 +544,46 @@ impl ChainSync {
             total_sent = total_sent.saturating_add(self.push_missing_blocks_to_peer(peer).await);
         }
         total_sent
+    }
+
+    pub async fn sync_mempool_from_peer(&self, peer: &str) -> usize {
+        let Some(NodeMessage::MempoolSnapshot { txs }) = send_to_node(
+            peer,
+            &NodeMessage::GetMempool {
+                limit: MEMPOOL_SYNC_LIMIT,
+            },
+        )
+        .await
+        else {
+            return 0;
+        };
+
+        if txs.is_empty() {
+            return 0;
+        }
+
+        let added = match tokio::task::spawn_blocking(move || Mempool::merge_persisted(txs)).await
+        {
+            Ok(added) => added,
+            Err(e) => {
+                println!("[sync] mempool merge task failed for {}: {}", peer, e);
+                0
+            }
+        };
+
+        if added > 0 {
+            println!("Mempool sync imported {} tx from {}", added, peer);
+        }
+
+        added
+    }
+
+    pub async fn sync_mempool_from_peers(&self) -> usize {
+        let mut total_added = 0usize;
+        for peer in &self.peers {
+            total_added = total_added.saturating_add(self.sync_mempool_from_peer(peer).await);
+        }
+        total_added
     }
 
     pub async fn check_peers(&self) {

@@ -130,7 +130,7 @@ impl MempoolTx {
             return Err("TX invalide: montant nul".to_string());
         }
         if !self.claimed && self.is_expired() {
-            return Err("TX invalide: transaction expirée".to_string());
+            return Err("TX invalide: transaction expiree".to_string());
         }
         Ok(())
     }
@@ -147,6 +147,7 @@ impl Mempool {
         if !path.exists() {
             return Self { txs: vec![] };
         }
+
         let json = match fs::read_to_string(&path) {
             Ok(json) => json,
             Err(e) => {
@@ -222,10 +223,6 @@ impl Mempool {
     }
 
     fn add_in_memory(&mut self, tx: MempoolTx) -> bool {
-        let removed = self.prune_expired_in_memory();
-        if removed > 0 {
-            println!("{} TX supprimÃ©es du mempool", removed);
-        }
         if let Err(reason) = tx.validate() {
             println!("Mempool: {}", reason);
             return false;
@@ -239,7 +236,7 @@ impl Mempool {
         }
 
         println!(
-            "Mempool: TX ajoutée {} - {} GHST fee - {}",
+            "Mempool: TX ajoutee {} - {} GHST fee - {}",
             &tx.tx_id[..16.min(tx.tx_id.len())],
             tx.fee,
             tx.priority_label()
@@ -249,8 +246,9 @@ impl Mempool {
     }
 
     pub fn add(&mut self, tx: MempoolTx) -> bool {
+        let removed = self.prune_expired_in_memory();
         let added = self.add_in_memory(tx);
-        if added {
+        if removed > 0 || added {
             self.save();
         }
         added
@@ -261,11 +259,56 @@ impl Mempool {
             .lock()
             .expect("mempool file mutex poisoned");
         let mut mempool = Self::load_unlocked();
+        let removed = mempool.prune_expired_in_memory();
         let added = mempool.add_in_memory(tx);
-        if added {
+        if removed > 0 || added {
             mempool.save_unlocked();
         }
         added
+    }
+
+    pub fn merge_persisted(incoming: Vec<MempoolTx>) -> usize {
+        let _guard = mempool_file_mutex()
+            .lock()
+            .expect("mempool file mutex poisoned");
+        let mut mempool = Self::load_unlocked();
+        let mut changed = mempool.prune_expired_in_memory() > 0;
+        let mut added = 0usize;
+
+        for mut tx in incoming {
+            tx.relay_count = tx.relay_count.min(MAX_RELAY_COUNT);
+            if mempool.add_in_memory(tx) {
+                added = added.saturating_add(1);
+                changed = true;
+            }
+        }
+
+        if changed {
+            mempool.save_unlocked();
+        }
+
+        added
+    }
+
+    pub fn snapshot_pending(limit: usize) -> Vec<MempoolTx> {
+        let _guard = mempool_file_mutex()
+            .lock()
+            .expect("mempool file mutex poisoned");
+        let mut mempool = Self::load_unlocked();
+        let removed = mempool.prune_expired_in_memory();
+        let capped = limit.clamp(1, MAX_MEMPOOL_TXS);
+        let snapshot = mempool
+            .sorted_by_priority()
+            .into_iter()
+            .take(capped)
+            .cloned()
+            .collect();
+
+        if removed > 0 {
+            mempool.save_unlocked();
+        }
+
+        snapshot
     }
 
     pub fn sorted_by_priority(&self) -> Vec<&MempoolTx> {
@@ -291,7 +334,7 @@ impl Mempool {
             if tx_ids.contains(&tx.tx_id) {
                 tx.claimed = true;
                 println!(
-                    "TX confirmée bloc #{} : {}...",
+                    "TX confirmee bloc #{} : {}...",
                     block_height,
                     &tx.tx_id[..16.min(tx.tx_id.len())]
                 );
@@ -303,12 +346,7 @@ impl Mempool {
     fn prune_expired_in_memory(&mut self) -> usize {
         let before = self.txs.len();
         self.txs.retain(|tx| !tx.should_prune());
-        let removed = before - self.txs.len();
-        if removed > 0 {
-            println!("{} TX supprimées du mempool", removed);
-            self.save();
-        }
-        removed
+        before - self.txs.len()
     }
 
     pub fn replace_by_fee(&mut self, tx_id: &str, new_fee: u64) -> bool {

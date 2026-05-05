@@ -131,6 +131,8 @@ pub enum NodeMessage {
         accepted: bool,
         mempool: usize,
     },
+    GetMempool { limit: usize },
+    MempoolSnapshot { txs: Vec<MempoolTx> },
     NewBlock { block_index: u32, hash: String },
     NewBlockFull { block: MinedBlock },
     GetStatus,
@@ -294,6 +296,22 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
         NodeMessage::GetPeers => Some(NodeMessage::PeerList {
             peers: state.get_peers(),
         }),
+        NodeMessage::GetMempool { limit } => {
+            let snapshot_limit = limit.clamp(1, crate::mempool::MAX_MEMPOOL_TXS);
+            let txs = match tokio::task::spawn_blocking(move || {
+                Mempool::snapshot_pending(snapshot_limit)
+            })
+            .await
+            {
+                Ok(txs) => txs,
+                Err(e) => {
+                    println!("Node {}: mempool snapshot task failed: {}", state.port, e);
+                    vec![]
+                }
+            };
+
+            Some(NodeMessage::MempoolSnapshot { txs })
+        }
         NodeMessage::PeerList { peers } => {
             for peer in peers {
                 if peer != peer_addr && !state.knows_peer(&peer) {
@@ -451,6 +469,7 @@ async fn process_message(msg: NodeMessage, state: &NodeState, peer_addr: &str) -
             None
         }
         NodeMessage::Ping => Some(NodeMessage::Pong),
+        NodeMessage::MempoolSnapshot { .. } => None,
         _ => None,
     }
 }
