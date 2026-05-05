@@ -100,13 +100,19 @@ impl Miner {
         }
 
         let total_reward = reward.saturating_add(fees_collected);
+        let tx_ids_serialized = if tx_ids.is_empty() {
+            "-".to_string()
+        } else {
+            tx_ids.join("|")
+        };
         let data = format!(
-            "coinbase:miner={} reward={} fees={} txs={} height={}",
+            "coinbase:miner={} reward={} fees={} txs={} height={} txids={}",
             &self.address[..16.min(self.address.len())],
             reward,
             fees_collected,
             selected_txs.len(),
             index,
+            tx_ids_serialized,
         );
 
         log_mining(&format!(

@@ -106,6 +106,7 @@ impl SharedChain {
         let normalized = Self::normalize_blocks(blocks);
         Self::save_to_disk(&normalized);
         Self::rebuild_chain_state(&normalized);
+        Self::reconcile_mempool_with_blocks(&normalized);
         normalized
     }
 
@@ -183,8 +184,63 @@ impl SharedChain {
             .and_then(|raw| raw.parse::<u64>().ok())
     }
 
+    fn parse_coinbase_text_field(data: &str, field: &str) -> Option<String> {
+        let prefix = format!("{}=", field);
+        data.split_whitespace()
+            .find_map(|part| part.strip_prefix(&prefix))
+            .map(str::to_string)
+    }
+
     fn claimed_reward(block: &MinedBlock) -> Option<u64> {
         Self::parse_coinbase_field(&block.data, "reward")
+    }
+
+    fn included_tx_ids(block: &MinedBlock, mempool: &Mempool) -> Vec<String> {
+        if let Some(raw_ids) = Self::parse_coinbase_text_field(&block.data, "txids") {
+            if raw_ids.is_empty() || raw_ids == "-" {
+                return vec![];
+            }
+            return raw_ids
+                .split('|')
+                .filter(|tx_id| !tx_id.is_empty())
+                .map(str::to_string)
+                .collect();
+        }
+
+        if block.tx_count == 0 {
+            return vec![];
+        }
+
+        let candidates = mempool.select_for_block();
+        if candidates.len() < block.tx_count {
+            return vec![];
+        }
+
+        let selected = &candidates[..block.tx_count];
+        let total_fees = selected.iter().map(|tx| tx.fee).sum::<u64>();
+        if total_fees != block.fees_collected {
+            return vec![];
+        }
+
+        selected.iter().map(|tx| tx.tx_id.clone()).collect()
+    }
+
+    fn reconcile_mempool_with_blocks(blocks: &[MinedBlock]) {
+        if !blocks.iter().any(|block| block.tx_count > 0) {
+            return;
+        }
+
+        let mut mempool = Mempool::load();
+        for block in blocks {
+            if block.tx_count == 0 {
+                continue;
+            }
+
+            let tx_ids = Self::included_tx_ids(block, &mempool);
+            if !tx_ids.is_empty() {
+                mempool.confirm_txs(&tx_ids, block.index as u64);
+            }
+        }
     }
 
     fn validate_block_candidate(
@@ -414,6 +470,7 @@ impl SharedChain {
         *chain = candidate;
         Self::save_to_disk(&chain);
         candidate_state.save();
+        Self::reconcile_mempool_with_blocks(&chain[common_prefix..]);
 
         if prefix_len < current_len {
             println!(
