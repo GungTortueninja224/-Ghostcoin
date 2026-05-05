@@ -3,6 +3,7 @@ target/
 *.ghst
 ghostcoin_*.json
 ghostcoin.log
+local_node_*.log
 portfolio_*.json
 txhistory_*.json
 Microsoft/
