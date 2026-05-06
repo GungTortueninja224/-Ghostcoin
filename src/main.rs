@@ -211,6 +211,7 @@ async fn main() {
     let password_used;
     let wallet_addr;
     let wallet_balance;
+    let wallet_instance;
 
     match choice.as_str() {
         "1" => {
@@ -238,9 +239,20 @@ async fn main() {
                 w.keypair.scan_private.as_bytes(),
                 w.keypair.spend_private.as_bytes(),
                 0,
+                w.get_seed_phrase(),
                 &password_used,
                 &wallet_path,
             );
+            if let Some(seed) = w.get_seed_phrase() {
+                println!("\n╔══════════════════════════════════════════╗");
+                println!("║  ⚠️  SAUVEGARDEZ VOTRE SEED PHRASE       ║");
+                println!("║  Elle ne sera plus affichée après ça.   ║");
+                println!("╠══════════════════════════════════════════╣");
+                println!("{}", seed);
+                println!("╚══════════════════════════════════════════╝");
+                let _ = read_input("Appuyez sur Entrée pour continuer...");
+            }
+            wallet_instance = w;
 
             println!("\n╔══════════════════════════════════════════════════════════╗");
             println!("║           ✅ WALLET CRÉÉ AVEC SUCCÈS                    ║");
@@ -285,6 +297,13 @@ async fn main() {
                     wallet_path = path_to_load;
                     password_used = pwd;
                     wallet_balance = w.balance;
+                    wallet_instance = match wallet::Wallet::from_wallet_file(&w) {
+                        Some(wallet) => wallet,
+                        None => {
+                            println!("âŒ Wallet corrompu ou clÃ©s incohÃ©rentes");
+                            return;
+                        }
+                    };
                     println!("✅ Wallet chargé !");
                     println!(
                         "   Adresse : {}...",
@@ -427,12 +446,11 @@ async fn main() {
     }
     println!("\n✅ {} opérationnel !\n", config.name);
 
-    let mut cli = cli::Cli::new_with_balance(
+    let mut cli = cli::Cli::new(
         shared_chain,
         &wallet_path,
         &password_used,
-        &wallet_addr,
-        wallet_balance,
+        wallet_instance,
     );
     cli.run();
 }

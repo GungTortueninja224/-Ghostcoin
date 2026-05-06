@@ -1,7 +1,11 @@
+use curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT;
 use curve25519_dalek::ristretto::RistrettoPoint;
+use curve25519_dalek::scalar::Scalar;
 use sha2::{Digest, Sha256};
 
+use crate::seed::SeedPhrase;
 use crate::stealth::RecipientKeypair;
+use crate::storage::WalletFile;
 
 // ==========================================
 // VERSIONS DU RÉSEAU
@@ -55,6 +59,41 @@ fn derive_address(spend_public: &RistrettoPoint, network: &Network) -> String {
     format!("{}-{}-{}", network.prefix(), payload, checksum)
 }
 
+fn network_from_address(address: &str) -> Network {
+    if address.starts_with("PCT-") {
+        Network::Testnet
+    } else {
+        Network::Mainnet
+    }
+}
+
+fn scalar_from_seed_phrase(seed_phrase: &str, domain: &[u8]) -> Scalar {
+    let mut h = Sha256::new();
+    h.update(seed_phrase.as_bytes());
+    h.update(domain);
+    let result = h.finalize();
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&result);
+    Scalar::from_bytes_mod_order(bytes)
+}
+
+fn derive_keypair_from_seed_phrase(seed_phrase: &str) -> RecipientKeypair {
+    let scan_private = scalar_from_seed_phrase(seed_phrase, b"ghostcoin-scan");
+    let spend_private = scalar_from_seed_phrase(seed_phrase, b"ghostcoin-spend");
+    RecipientKeypair {
+        scan_public: scan_private * RISTRETTO_BASEPOINT_POINT,
+        spend_public: spend_private * RISTRETTO_BASEPOINT_POINT,
+        scan_private,
+        spend_private,
+    }
+}
+
+fn scalar_from_hex(hex_str: &str) -> Option<Scalar> {
+    let bytes = hex::decode(hex_str).ok()?;
+    let bytes: [u8; 32] = bytes.try_into().ok()?;
+    Some(Scalar::from_bytes_mod_order(bytes))
+}
+
 // ==========================================
 // VALIDATION D'ADRESSE
 // ==========================================
@@ -100,29 +139,65 @@ pub struct Wallet {
     pub keypair: RecipientKeypair,
     pub balance: u64,
     pub network: String,
+    pub seed_phrase: Option<String>,
 }
 
 impl Wallet {
-    pub fn new_mainnet() -> Self {
-        let keypair = RecipientKeypair::generate();
-        let address = derive_address(&keypair.spend_public, &Network::Mainnet);
+    fn new_with_network(network: Network) -> Self {
+        let seed = SeedPhrase::generate();
+        let seed_phrase = seed.words.join(" ");
+        let keypair = derive_keypair_from_seed_phrase(&seed_phrase);
+        let address = derive_address(&keypair.spend_public, &network);
+        let network_name = match network {
+            Network::Mainnet => "Mainnet",
+            Network::Testnet => "Testnet",
+        };
         Self {
             address,
             keypair,
             balance: 0,
-            network: "Mainnet".to_string(),
+            network: network_name.to_string(),
+            seed_phrase: Some(seed_phrase),
         }
     }
 
+    pub fn new_mainnet() -> Self {
+        Self::new_with_network(Network::Mainnet)
+    }
+
     pub fn new_testnet() -> Self {
-        let keypair = RecipientKeypair::generate();
-        let address = derive_address(&keypair.spend_public, &Network::Testnet);
-        Self {
-            address,
-            keypair,
-            balance: 0,
-            network: "Testnet".to_string(),
+        Self::new_with_network(Network::Testnet)
+    }
+
+    pub fn from_wallet_file(wallet_file: &WalletFile) -> Option<Self> {
+        let scan_private = scalar_from_hex(&wallet_file.scan_private)?;
+        let spend_private = scalar_from_hex(&wallet_file.spend_private)?;
+        let keypair = RecipientKeypair {
+            scan_public: scan_private * RISTRETTO_BASEPOINT_POINT,
+            spend_public: spend_private * RISTRETTO_BASEPOINT_POINT,
+            scan_private,
+            spend_private,
+        };
+        let network = network_from_address(&wallet_file.address);
+        let derived_address = derive_address(&keypair.spend_public, &network);
+        if derived_address != wallet_file.address {
+            return None;
         }
+        let network_name = match network {
+            Network::Mainnet => "Mainnet",
+            Network::Testnet => "Testnet",
+        };
+        Some(Self {
+            address: wallet_file.address.clone(),
+            keypair,
+            balance: wallet_file.balance,
+            network: network_name.to_string(),
+            seed_phrase: wallet_file.seed_phrase.clone(),
+        })
+    }
+
+    pub fn get_seed_phrase(&self) -> Option<&str> {
+        self.seed_phrase.as_deref()
     }
 
     pub fn show(&self) {

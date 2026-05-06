@@ -20,18 +20,15 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn new_with_balance(
+    pub fn new(
         chain:       SharedChain,
         wallet_path: &str,
         password:    &str,
-        address:     &str,
-        _balance:    u64,
+        mut wallet:  Wallet,
     ) -> Self {
-        let tx_store = WalletTxStore::new(address);
+        let tx_store = WalletTxStore::new(&wallet.address);
         let txs      = tx_store.load();
         println!("📂 {} transaction(s) dans l'historique", txs.len());
-        let mut wallet  = Wallet::new_mainnet();
-        wallet.address  = address.to_string();
         wallet.balance  = tx_store.available_balance();
         Self {
             wallet,
@@ -48,13 +45,13 @@ impl Cli {
     }
 
     fn coming_soon(feature: &str) {
-        println!("");
+        println!();
         println!("╔══════════════════════════════════════╗");
         println!("║     🔜 {} — COMING SOON", feature);
         println!("║                                      ║");
         println!("║  Disponible au mainnet v2            ║");
         println!("╚══════════════════════════════════════╝");
-        println!("");
+        println!();
     }
 
     fn check_incoming(&mut self) {
@@ -97,7 +94,7 @@ impl Cli {
             println!("│  6.  📋 Copier mon adresse                   │");
             println!("│  7.  📜 Historique (mon wallet)              │");
             println!("│  8.  🔑 Générer View Key                     │");
-            println!("│  9.  🔍 Import View Key (Coming Soon)        │");
+            println!("│  9.  🔍 Importer View Key                    │");
             println!("│  A.  💱 Atomic Swap (Coming Soon)            │");
             println!("│  B.  🛡️  Max Privacy (Coming Soon)           │");
             println!("│  C.  🔎 Block Explorer                       │");
@@ -131,13 +128,13 @@ impl Cli {
                 "6" => self.copy_address(),
                 "7" => self.show_my_transactions(),
                 "8" => self.generate_view_key(),
-                "9" => Self::coming_soon("IMPORT VIEW KEY"),
+                "9" => self.import_view_key(),
                 "a" => Self::coming_soon("ATOMIC SWAP"),
                 "b" => Self::coming_soon("MAX PRIVACY"),
                 "c" => self.explorer.show_blocks(),
                 "d" => ChainState::load().show(),
                 "e" => self.mine_block(),
-                "f" => Self::coming_soon("SEED PHRASE"),
+                "f" => self.show_stored_seed_phrase(),
                 "g" => self.rescan_wallet(),
                 "h" => self.show_mempool(),
                 "i" => Self::coming_soon("REPLACE-BY-FEE"),
@@ -527,10 +524,25 @@ impl Cli {
         ChainState::load().show();
     }
 
-    fn show_seed_phrase(&self) {
-        let seed = crate::seed::SeedPhrase::generate();
-        seed.display();
-        println!("\n   ⚠️  Écris ces mots sur papier maintenant !");
+    fn show_stored_seed_phrase(&self) {
+        match self.wallet.get_seed_phrase() {
+            Some(seed) => {
+                println!();
+                println!("⚠️  ATTENTION — Ne partagez JAMAIS votre seed phrase !");
+                println!("⚠️  Quiconque la possède contrôle votre wallet.");
+                println!();
+                println!("Seed Phrase :");
+                println!("{}", seed);
+                println!();
+            }
+            None => {
+                println!();
+                println!("Seed phrase non disponible.");
+                println!("Ce wallet a été créé sans seed phrase.");
+                println!("Recréez un wallet pour obtenir une seed.");
+                println!();
+            }
+        }
     }
 
     fn rescan_wallet(&mut self) {

@@ -34,6 +34,8 @@ pub struct WalletFile {
     pub spend_private: String,
     pub balance: u64,
     pub version: String,
+    #[serde(default)]
+    pub seed_phrase: Option<String>,
 }
 
 const WALLET_V2_HEADER: &[u8] = b"GHSTW2";
@@ -116,6 +118,7 @@ pub fn save_wallet(
     scan_private: &[u8],
     spend_private: &[u8],
     balance: u64,
+    seed_phrase: Option<&str>,
     password: &str,
     path: &str,
 ) -> bool {
@@ -125,6 +128,7 @@ pub fn save_wallet(
         spend_private: hex::encode(spend_private),
         balance,
         version: "2.0.0".to_string(),
+        seed_phrase: seed_phrase.map(str::to_string),
     };
 
     match serde_json::to_string(&wallet) {
