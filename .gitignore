@@ -3,8 +3,16 @@ target/
 *.ghst
 ghostcoin_*.json
 ghostcoin.log
+ghostcoin.instance.lock
 local_node_*.log
 portfolio_*.json
 txhistory_*.json
+.env
+.env.*
+*.pem
+*.key
+data/
+data-sync/
+repair_backups/
 Microsoft/
 chain_reset_backup_*/
