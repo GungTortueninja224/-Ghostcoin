@@ -1985,11 +1985,8 @@ async fn api_faucet(
         amount: Some(FAUCET_AMOUNT),
     })
 }
-async fn mobile_app_handler() -> HttpResponse {
-    let html = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/app.html"));
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html)
+async fn mobile_app_handler() -> Html<&'static str> {
+    Html(include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/app.html")))
 }
 async fn health() -> Json<Value> {
     Json(json!({
@@ -2008,6 +2005,7 @@ pub async fn start_web_server_on_port(port: u16) {
         .route("/blocks", get(home))
         .route("/mempool", get(home))
         .route("/holders", get(home))
+        .route("/app", get(mobile_app_handler))
         .route("/mining", get(home))
         .route("/buy", get(home))
         .route("/tokenomics", get(home))
