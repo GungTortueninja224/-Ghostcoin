@@ -103,6 +103,7 @@ mod tests {
             b"scan-private",
             b"spend-private",
             42,
+            Some("alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima"),
             "strong-password",
             path,
         ));
@@ -111,6 +112,7 @@ mod tests {
         assert_eq!(wallet.address, "PC1-test");
         assert_eq!(wallet.balance, 42);
         assert_eq!(wallet.version, "2.0.0");
+        assert!(wallet.seed_phrase.is_some());
         assert!(crate::storage::load_wallet(path, "wrong-password").is_none());
 
         let _ = std::fs::remove_file(path);
