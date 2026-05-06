@@ -1985,7 +1985,12 @@ async fn api_faucet(
         amount: Some(FAUCET_AMOUNT),
     })
 }
-
+async fn mobile_app_handler() -> HttpResponse {
+    let html = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/static/app.html"));
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html)
+}
 async fn health() -> Json<Value> {
     Json(json!({
         "status": "ok",
