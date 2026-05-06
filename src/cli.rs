@@ -88,7 +88,7 @@ impl Cli {
             println!("│  7.  📜 Historique (mon wallet)              │");
             println!("│  8.  🔑 Générer View Key                     │");
             println!("│  9.  🔍 Importer View Key                    │");
-            println!("│  A.  💱 Atomic Swap                          │");
+            println!("│  A.  💱 Atomic Swap (Coming Soon)            │");
             println!("│  B.  🛡️  Envoyer max privacy                 │");
             println!("│  C.  🔎 Block Explorer                       │");
             println!("│  D.  📊 Stats réseau global                  │");
@@ -122,7 +122,15 @@ impl Cli {
                 "7" => self.show_my_transactions(),
                 "8" => self.generate_view_key(),
                 "9" => self.import_view_key(),
-                "a" => self.atomic_swap(),
+                "a" => {
+                    println!("");
+                    println!("╔══════════════════════════════════════╗");
+                    println!("║     🔜 ATOMIC SWAP — COMING SOON     ║");
+                    println!("║                                      ║");
+                    println!("║  Disponible au mainnet v2            ║");
+                    println!("╚══════════════════════════════════════╝");
+                    println!("");
+                }
                 "b" => {
                     tokio::task::block_in_place(|| {
                      tokio::runtime::Handle::current()
