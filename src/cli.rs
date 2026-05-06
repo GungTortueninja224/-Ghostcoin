@@ -101,7 +101,7 @@ impl Cli {
             println!("│  K.  💎 Staking GHST                         │");
             println!("│  L.  🗳️  Gouvernance                         │");
             println!("│  M.  🖥️  Masternode                          │");
-            println!("│  P.  💼 Mon Portfolio                        │");
+            println!("│  P.  💼 Mon Portfolio (Coming Soon)          │");
             println!("│  N.  🧅 Tor Network                          │");
             println!("│  O.  🌀 MimbleWimble Stats                   │");
             println!("│  0.  🚪 Quitter                              │");
@@ -137,7 +137,15 @@ impl Cli {
                 "h" => self.show_mempool(),
                 "i" => self.replace_by_fee(),
                 "j" => self.show_quantum_wallet(),
-                "p" => self.show_portfolio(),
+                "p" => {
+                    println!("");
+                    println!("╔══════════════════════════════════════╗");
+                    println!("║     🔜 PORTFOLIO — COMING SOON       ║");
+                    println!("║                                      ║");
+                    println!("║  Disponible au mainnet v2            ║");
+                    println!("╚══════════════════════════════════════╝");
+                    println!("");
+                }
                 "k" => self.staking_menu(),
                 "l" => self.governance_menu(),
                 "m" => self.masternode_menu(),
