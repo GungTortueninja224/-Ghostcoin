@@ -373,7 +373,15 @@ async function fetchPrices(){{
     return d;
   }}catch(e){{console.warn('price err',e);}}
 }}
+// web_server.rs — ajouter la route /app
+.route("/app", web::get().to(mobile_app_handler))
 
+async fn mobile_app_handler() -> HttpResponse {
+    let html = include_str!("../static/app.html");
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html)
+}
 // ── CHART PRIX 7J ──
 async function initPriceChart(){{
   try{{
