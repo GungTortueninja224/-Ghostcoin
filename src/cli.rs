@@ -47,6 +47,16 @@ impl Cli {
         }
     }
 
+    fn coming_soon(feature: &str) {
+        println!("");
+        println!("╔══════════════════════════════════════╗");
+        println!("║     🔜 {} — COMING SOON", feature);
+        println!("║                                      ║");
+        println!("║  Disponible au mainnet v2            ║");
+        println!("╚══════════════════════════════════════╝");
+        println!("");
+    }
+
     fn check_incoming(&mut self) {
         let incoming = claim_incoming(&self.wallet.address);
         if !incoming.is_empty() {
@@ -87,23 +97,23 @@ impl Cli {
             println!("│  6.  📋 Copier mon adresse                   │");
             println!("│  7.  📜 Historique (mon wallet)              │");
             println!("│  8.  🔑 Générer View Key                     │");
-            println!("│  9.  🔍 Importer View Key                    │");
+            println!("│  9.  🔍 Import View Key (Coming Soon)        │");
             println!("│  A.  💱 Atomic Swap (Coming Soon)            │");
-            println!("│  B.  🛡️  Envoyer max privacy                 │");
+            println!("│  B.  🛡️  Max Privacy (Coming Soon)           │");
             println!("│  C.  🔎 Block Explorer                       │");
             println!("│  D.  📊 Stats réseau global                  │");
             println!("│  E.  ⛏️  Miner un bloc                       │");
-            println!("│  F.  🌱 Afficher Seed Phrase                 │");
+            println!("│  F.  🌱 Seed Phrase (Coming Soon)            │");
             println!("│  G.  🔄 Rescan wallet                        │");
             println!("│  H.  📋 Voir mempool                         │");
-            println!("│  I.  🔄 Replace-by-Fee (RBF)                 │");
-            println!("│  J.  🛡️  Wallet Quantum-Safe                 │");
-            println!("│  K.  💎 Staking GHST                         │");
-            println!("│  L.  🗳️  Gouvernance                         │");
-            println!("│  M.  🖥️  Masternode                          │");
+            println!("│  I.  🔄 Replace-by-Fee (Coming Soon)         │");
+            println!("│  J.  🛡️  Quantum Wallet (Coming Soon)        │");
+            println!("│  K.  💎 Staking GHST (Coming Soon)           │");
+            println!("│  L.  🗳️  Gouvernance (Coming Soon)           │");
+            println!("│  M.  🖥️  Masternode (Coming Soon)            │");
             println!("│  P.  💼 Mon Portfolio (Coming Soon)          │");
-            println!("│  N.  🧅 Tor Network                          │");
-            println!("│  O.  🌀 MimbleWimble Stats                   │");
+            println!("│  N.  🧅 Tor Network (Coming Soon)            │");
+            println!("│  O.  🌀 MimbleWimble (Coming Soon)           │");
             println!("│  0.  🚪 Quitter                              │");
             println!("└──────────────────────────────────────────────┘");
             print!("Choix : ");
@@ -121,44 +131,23 @@ impl Cli {
                 "6" => self.copy_address(),
                 "7" => self.show_my_transactions(),
                 "8" => self.generate_view_key(),
-                "9" => self.import_view_key(),
-                "a" => {
-                    println!("");
-                    println!("╔══════════════════════════════════════╗");
-                    println!("║     🔜 ATOMIC SWAP — COMING SOON     ║");
-                    println!("║                                      ║");
-                    println!("║  Disponible au mainnet v2            ║");
-                    println!("╚══════════════════════════════════════╝");
-                    println!("");
-                }
-                "b" => {
-                    tokio::task::block_in_place(|| {
-                     tokio::runtime::Handle::current()
-                          .block_on(self.send_max_privacy())
-                    });
-               }
+                "9" => Self::coming_soon("IMPORT VIEW KEY"),
+                "a" => Self::coming_soon("ATOMIC SWAP"),
+                "b" => Self::coming_soon("MAX PRIVACY"),
                 "c" => self.explorer.show_blocks(),
                 "d" => ChainState::load().show(),
                 "e" => self.mine_block(),
-                "f" => self.show_seed_phrase(),
+                "f" => Self::coming_soon("SEED PHRASE"),
                 "g" => self.rescan_wallet(),
                 "h" => self.show_mempool(),
-                "i" => self.replace_by_fee(),
-                "j" => self.show_quantum_wallet(),
-                "p" => {
-                    println!("");
-                    println!("╔══════════════════════════════════════╗");
-                    println!("║     🔜 PORTFOLIO — COMING SOON       ║");
-                    println!("║                                      ║");
-                    println!("║  Disponible au mainnet v2            ║");
-                    println!("╚══════════════════════════════════════╝");
-                    println!("");
-                }
-                "k" => self.staking_menu(),
-                "l" => self.governance_menu(),
-                "m" => self.masternode_menu(),
-                "n" => self.tor_menu(),
-                "o" => self.mimblewimble_stats(),
+                "i" => Self::coming_soon("REPLACE-BY-FEE"),
+                "j" => Self::coming_soon("QUANTUM-SAFE WALLET"),
+                "p" => Self::coming_soon("PORTFOLIO"),
+                "k" => Self::coming_soon("STAKING GHST"),
+                "l" => Self::coming_soon("GOUVERNANCE"),
+                "m" => Self::coming_soon("MASTERNODE"),
+                "n" => Self::coming_soon("TOR NETWORK"),
+                "o" => Self::coming_soon("MIMBLEWIMBLE"),
                 "0" => { println!("👋 Au revoir !"); break; }
                 _   => println!("❌ Choix invalide"),
             }
